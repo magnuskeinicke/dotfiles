@@ -4,8 +4,7 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Files (either can be missing; script handles that)
-LIST_FLATHUB="$REPO_DIR/flatpak/flathub.txt"
-LIST_LOCAL="$REPO_DIR/flatpak/local.txt"
+LIST_FLATHUB="$REPO_DIR/flatpak/packages.txt"
 
 ensure_flatpak() {
   if ! command -v flatpak >/dev/null 2>&1; then
@@ -47,6 +46,5 @@ ensure_flatpak
 ensure_flathub_remote
 
 install_list "$LIST_FLATHUB"
-install_list "$LIST_LOCAL"
 
 echo "✅ Flatpak install complete"

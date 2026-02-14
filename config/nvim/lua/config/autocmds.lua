@@ -10,6 +10,6 @@
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "lua",
   callback = function(event)
-    vim.keymap.del("n", "\\r", { buffer = event.buf })
+    pcall(vim.keymap.del, "n", "\\r", { buffer = event.buf })
   end,
 })

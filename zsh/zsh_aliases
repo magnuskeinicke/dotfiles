@@ -16,3 +16,7 @@ alias minivim='NVIM_APPNAME=nvim-mini nvim'
 alias sn='cd $HOME/Documents/voice-to-text/; source ./tools/scripts/environment/load-variables.sh'
 alias sndev='sn; npx nx dev seranote-web --webpack'
 alias sntest='sn; npx nx affected -t lint test build e2e'
+
+# lazygit
+alias lg="lazygit"
+

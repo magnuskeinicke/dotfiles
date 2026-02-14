@@ -1,0 +1,4 @@
+com.brave.Browser
+com.protonvpn.www
+me.proton.Mail
+me.proton.Pass

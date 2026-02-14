@@ -13,7 +13,8 @@ for path in "$REPO_DIR/config/"*; do
 done
 
 echo "Linking home dotfiles..."
-ln -sf "$REPO_DIR/zsh/.zshrc" "$HOME/.zshrc"
-ln -sf "$REPO_DIR/zsh/.zsh_aliases" "$HOME/.zsh_aliases"
+ln -sf "$REPO_DIR/zsh/zshrc" "$HOME/.zshrc"
+ln -sf "$REPO_DIR/zsh/zsh_aliases" "$HOME/.zsh_aliases"
+ln -sf "$REPO_DIR/zsh/helpers.zsh" "$HOME/helpers.zsh"
 
 echo "Done linking."

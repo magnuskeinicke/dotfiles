@@ -111,6 +111,7 @@ source $ZSH/oh-my-zsh.sh
 export COLORTERM=truecolor
 
 source ~/.zsh_aliases
+source ~/helpers.zsh
 
 export GPG_TTY=$(tty)
 
