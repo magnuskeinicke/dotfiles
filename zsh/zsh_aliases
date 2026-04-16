@@ -16,7 +16,17 @@ alias minivim='NVIM_APPNAME=nvim-mini nvim'
 alias sn='cd $HOME/Documents/Work/voice-to-text/; source ./tools/scripts/environment/load-variables.sh'
 alias sndev='sn; npx nx dev seranote-web --webpack'
 alias sntest='sn; npx nx affected -t lint test build e2e'
+alias snsb='sn; npx nx storybook storybook-web'
+
+# seranote (current worktree)
+vtt-copy-envs() {
+  "$HOME/dotfiles/scripts/copy-vtt-envs-to-cwd.sh" "$@"
+}
+alias snwenv='vtt-copy-envs'
+alias snw='source ./tools/scripts/environment/load-variables.sh'
+alias snwdev='snw; npx nx dev seranote-web --webpack'
+alias snwtest='snw; npx nx affected -t lint test build e2e'
+alias snwsb='snw; npx nx storybook storybook-web'
 
 # lazygit
 alias lg="lazygit"
-

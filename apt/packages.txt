@@ -26,3 +26,6 @@ containerd.io
 docker-buildx-plugin
 docker-compose-plugin
 btop
+dnsutils
+libsecret-tools
+gnome-keyring

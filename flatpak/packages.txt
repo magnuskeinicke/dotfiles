@@ -1,4 +1,5 @@
 com.brave.Browser
 me.proton.Mail
-me.proton.Pass
 io.dbeaver.DBeaverCommunity
+com.getpostman.Postman
+com.vivaldi.Vivaldi

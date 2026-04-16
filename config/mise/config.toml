@@ -13,6 +13,8 @@ node = "lts"
 lazygit = "latest"
 eza = "latest"
 go = "latest"
+codex = "latest"
+claude-code = "latest"
 
 [settings]
 trusted_config_paths = ['~/dotfiles/config/mise/config.toml']

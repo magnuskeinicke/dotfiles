@@ -148,6 +148,16 @@ export FZF_CTRL_T_OPTS="
   --bind 'ctrl-/:change-preview-window(down|hidden|)'"
 export FZF_DEFAULT_OPTS="--ansi"
 
+# Github PAT
+export GITHUB_PAT=$(secret-tool lookup service github-mcp user $USER)
+export FIGMA_PAT=$(secret-tool lookup service figma-mcp user $USER)
+export POSTHOG_PAT=$(secret-tool lookup service posthog-pat user $USER)
+
+# We use mise, so set codexia to use the mise path to codex
+codexia() {
+  CODEX_PATH="$(mise which codex)" command codexia "$@"
+}
+
 # Go
 export PATH=$PATH:/usr/local/go/bin
 export PATH=$PATH:$HOME/go/bin
@@ -168,3 +178,6 @@ export NVM_DIR="$HOME/.nvm"
 
 eval "$(starship init zsh)"
 
+
+# opencode
+export PATH=/home/keinicke/.opencode/bin:$PATH
