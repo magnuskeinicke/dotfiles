@@ -30,3 +30,6 @@ alias snwsb='snw; npx nx storybook storybook-web'
 
 # lazygit
 alias lg="lazygit"
+
+# Nimbalyst
+alias nimbalyst="$HOME/Applications/squashfs-root/AppRun"
