@@ -29,7 +29,7 @@ alias snwtest='snw; npx nx affected -t lint test build e2e'
 alias snwsb='snw; npx nx storybook storybook-web'
 
 # lazygit
-alias lg="lazygit"
+alias gg="lazygit"
 
 # Nimbalyst
 alias nimbalyst="$HOME/Applications/squashfs-root/AppRun"
@@ -40,3 +40,6 @@ alias cheat='less ~/.config/skhd/cheatsheet.txt'
 # Reconcile yabai spaces + sketchybar bars after a display hotplug glitch.
 # Same script that fires on display_added/removed signals — safe to re-run.
 alias yreset='~/.config/yabai/scripts/reconcile-displays.sh'
+
+# CV — cd to repo + load env (.env/.env.local) + repo-local aliases (cvdev, cvbuild, cvall, ...)
+alias cv='cd $HOME/Documents/Personal/CV; source ./scripts/dev.sh'
