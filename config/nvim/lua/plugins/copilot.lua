@@ -1,21 +1,25 @@
-local M = {
-  "github/copilot.vim",
-  event = "InsertEnter",
+-- Copilot via the LazyVim ai.copilot extra (copilot.lua).
+-- Ghost text enabled through vim.g.ai_cmp = false (see config/options.lua).
+return {
+  "zbirenbaum/copilot.lua",
+  opts = {
+    suggestion = {
+      keymap = {
+        accept = "<M-y>",
+        accept_word = "<M-w>",
+        accept_line = "<M-l>",
+        dismiss = "<M-e>",
+        next = "<M-n>",
+        prev = "<M-p>",
+      },
+    },
+  },
   keys = {
     {
-      "<M-y>",
-      'copilot#Accept("\\<CR>")',
+      "<M-\\>",
+      function() require("copilot.suggestion").next() end,
       mode = "i",
-      expr = true,
-      replace_keycodes = false,
-      desc = "Accept Copilot suggestion",
+      desc = "Copilot force suggestion",
     },
-    { "<M-w>", "<Plug>(copilot-accept-word)", mode = "i", desc = "Copilot accept word" },
-    { "<M-l>", "<Plug>(copilot-accept-line)", mode = "i", desc = "Copilot accept line" },
-    { "<M-e>", "<Plug>(copilot-dismiss)", mode = "i", desc = "Copilot dismiss suggestion" },
-    { "<M-n>", "<Plug>(copilot-next)", mode = "i", desc = "Copilot next suggestion" },
-    { "<M-p>", "<Plug>(copilot-previous)", mode = "i", desc = "Copilot previous suggestion" },
-    { "<M-\\>", "<Plug>(copilot-suggest)", mode = "i", desc = "Copilot force suggestion" },
   },
 }
-return M

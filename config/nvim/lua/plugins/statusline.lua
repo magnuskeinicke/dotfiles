@@ -4,67 +4,110 @@ local M = {
   opts = function()
     local C = require("catppuccin.palettes").get_palette("mocha")
     local transparent = "NONE"
-    local function getLspName()
+    -- LSP clients that are really linters; shown in the linter group instead.
+    local linter_clients = { oxlint = true, eslint = true }
+
+    local function dedup(list)
+      local seen, out = {}, {}
+      for _, v in ipairs(list) do
+        if not seen[v] then
+          seen[v] = true
+          out[#out + 1] = v
+        end
+      end
+      return out
+    end
+
+    -- One source of truth for all three groups; cached briefly since the
+    -- conform/lint condition checks walk the filesystem and lualine calls
+    -- these functions several times per redraw.
+    local cache = { time = 0 }
+    local function get_groups()
+      local now = (vim.uv or vim.loop).now()
       local bufnr = vim.api.nvim_get_current_buf()
-      local buf_clients = vim.lsp.get_clients({ bufnr = bufnr })
+      if cache.bufnr == bufnr and now - cache.time < 500 then
+        return cache.servers, cache.linters, cache.formatters
+      end
       local buf_ft = vim.bo.filetype
-      if next(buf_clients) == nil then
-        return "  No servers"
-      end
-      local buf_client_names = {}
 
-      for _, client in pairs(buf_clients) do
-        if client.name ~= "null-ls" then
-          table.insert(buf_client_names, client.name)
+      local servers = {}
+      local linters = {}
+      for _, client in pairs(vim.lsp.get_clients({ bufnr = bufnr })) do
+        if client.name ~= "null-ls" and client.name ~= "GitHub Copilot" and client.name ~= "copilot" then
+          table.insert(linter_clients[client.name] and linters or servers, client.name)
         end
       end
 
-      local lint_s, lint = pcall(require, "lint")
-      if lint_s then
-        for ft_k, ft_v in pairs(lint.linters_by_ft) do
-          if type(ft_v) == "table" then
-            for _, linter in ipairs(ft_v) do
-              if buf_ft == ft_k then
-                table.insert(buf_client_names, linter)
-              end
-            end
-          elseif type(ft_v) == "string" then
-            if buf_ft == ft_k then
-              table.insert(buf_client_names, ft_v)
-            end
+      -- nvim-lint linters for this filetype, honoring LazyVim's `condition`
+      -- extension so gated linters don't show where they won't run.
+      local lint_ok, lint = pcall(require, "lint")
+      if lint_ok then
+        local ctx = { filename = vim.api.nvim_buf_get_name(bufnr) }
+        ctx.dirname = vim.fn.fnamemodify(ctx.filename, ":h")
+        for _, name in ipairs(lint._resolve_linter_by_ft(buf_ft)) do
+          local linter = lint.linters[name]
+          if linter and not (type(linter) == "table" and linter.condition and not linter.condition(ctx)) then
+            table.insert(linters, name)
           end
         end
       end
 
-      local ok, conform = pcall(require, "conform")
-      local formatters = table.concat(conform.list_formatters_for_buffer(), " ")
-      if ok then
-        for formatter in formatters:gmatch("%w+") do
-          if formatter then
-            table.insert(buf_client_names, formatter)
-          end
+      -- Formatters that will actually run (evaluates conditions, require_cwd
+      -- and stop_after_first), unlike list_formatters_for_buffer which lists
+      -- everything configured for the filetype.
+      local formatters = {}
+      local conform_ok, conform = pcall(require, "conform")
+      if conform_ok then
+        for _, f in ipairs(conform.list_formatters_to_run(bufnr)) do
+          table.insert(formatters, f.name)
         end
       end
 
-      local hash = {}
-      local unique_client_names = {}
-
-      for _, v in ipairs(buf_client_names) do
-        if not hash[v] and v ~= "GitHub Copilot" then
-          unique_client_names[#unique_client_names + 1] = v
-          hash[v] = true
-        end
-      end
-      local language_servers = table.concat(unique_client_names, ", ")
-
-      return "󰅡 " .. language_servers
+      cache = {
+        bufnr = bufnr,
+        time = now,
+        servers = dedup(servers),
+        linters = dedup(linters),
+        formatters = dedup(formatters),
+      }
+      return cache.servers, cache.linters, cache.formatters
     end
 
     local lsp = {
       function()
-        return getLspName()
+        local servers = get_groups()
+        if #servers == 0 then
+          return "  No servers"
+        end
+        return "󰅡 " .. table.concat(servers, ", ")
       end,
       separator = { left = "", right = "" },
+    }
+
+    local linters_group = {
+      function()
+        local _, linters = get_groups()
+        return "󰚔 " .. table.concat(linters, ", ")
+      end,
+      cond = function()
+        local _, linters = get_groups()
+        return #linters > 0
+      end,
+      separator = { left = "", right = "" },
+      color = { bg = C.yellow, fg = C.mantle },
+    }
+
+    local formatters_group = {
+      function()
+        local _, _, formatters = get_groups()
+        return "󰉼 " .. table.concat(formatters, ", ")
+      end,
+      cond = function()
+        local _, _, formatters = get_groups()
+        return #formatters > 0
+      end,
+      separator = { left = "", right = "" },
+      color = { bg = C.green, fg = C.mantle },
     }
     local modes = {
       "mode",
@@ -124,7 +167,7 @@ local M = {
 
     return {
       options = {
-        theme = "catppuccin",
+        theme = "catppuccin-nvim",
         icons_enabled = true,
         component_separators = { left = "", right = "" },
         section_separators = { left = "", right = "" },
@@ -150,9 +193,9 @@ local M = {
         },
         lualine_x = { space },
         lualine_y = { space },
-        lualine_z = { lsp },
+        lualine_z = { formatters_group, space, linters_group, space, lsp },
       },
     }
   end,
 }
-return {}
+return M

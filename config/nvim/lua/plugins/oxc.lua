@@ -29,6 +29,14 @@ local oxfmt_filetypes = {
   "astro",
 }
 
+-- oxfmt >= 0.53 also formats stylesheets, but the LazyVim extra's list hasn't
+-- caught up yet, so we register oxfmt for these ourselves (same gating applies).
+local oxfmt_extra_filetypes = {
+  "css",
+  "scss",
+  "less",
+}
+
 return {
   "stevearc/conform.nvim",
   optional = true,
@@ -55,6 +63,15 @@ return {
         -- in the list; just stop after whichever one's condition passes.
         list.stop_after_first = true
       end
+    end
+
+    -- Stylesheet filetypes: the prettier extra registered prettier, but the oxc
+    -- extra doesn't know oxfmt handles these yet — append oxfmt and gate as above.
+    for _, ft in ipairs(oxfmt_extra_filetypes) do
+      local list = opts.formatters_by_ft[ft] or {}
+      table.insert(list, "oxfmt")
+      list.stop_after_first = true
+      opts.formatters_by_ft[ft] = list
     end
   end,
 }
