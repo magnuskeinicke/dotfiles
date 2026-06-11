@@ -46,7 +46,8 @@
     "feature-dev@claude-plugins-official": true,
     "figma@claude-plugins-official": true,
     "sentry@claude-plugins-official": true,
-    "lua-lsp@claude-plugins-official": true
+    "lua-lsp@claude-plugins-official": true,
+    "posthog@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "caveman": {
