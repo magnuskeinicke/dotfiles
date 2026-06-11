@@ -16,6 +16,8 @@ go = "latest"
 codex = "latest"
 claude-code = "latest"
 copilot = "latest"
+pnpm = "latest"
+postgres = "16.14"
 
 [settings]
 trusted_config_paths = ['~/dotfiles/config/mise/config.toml']
