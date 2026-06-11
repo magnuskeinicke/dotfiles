@@ -22,10 +22,7 @@ brew "tree"
 brew "wget"
 
 # --- Window management (macOS) ---
-brew "koekeishiya/formulae/yabai"
-brew "koekeishiya/formulae/skhd"
-brew "FelixKratz/formulae/sketchybar"
-brew "blueutil"  # CLI for Bluetooth state — used by sketchybar's BT indicator
+cask "nikitabobko/tap/aerospace"  # tiling WM — no native Spaces, no SIP
 
 # --- Apps (casks) ---
 cask "brave-browser"
@@ -38,8 +35,8 @@ cask "ghostty"
 cask "postman"
 cask "proton-mail"
 cask "vivaldi"
+cask "raycast"  # launcher — replaces Spotlight (cmd-Space)
 
 # --- Fonts ---
 cask "font-jetbrains-mono-nerd-font"
 cask "sf-symbols"
-cask "font-sketchybar-app-font"

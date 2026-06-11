@@ -342,35 +342,9 @@ brew-up() {
   _log "brew update"
   _run brew update || return $?
 
-  # Detect whether yabai is about to be upgraded. Homebrew can change the
-  # binary path between versions, so the existing launchd service file would
-  # reference a stale path — per yabai's docs we must stop + uninstall the
-  # service BEFORE the upgrade and start it again after.
-  local _yabai_upgrading=0
-  if command -v yabai >/dev/null 2>&1 \
-     && [[ -n "$(brew outdated yabai 2>/dev/null)" ]]; then
-    _yabai_upgrading=1
-    _log "yabai upgrade detected — stopping and uninstalling service"
-    _run yabai --stop-service      || _warn "yabai --stop-service failed (continuing)"
-    _run yabai --uninstall-service || _warn "yabai --uninstall-service failed (continuing)"
-  fi
-
   _log "brew upgrade"
   _run brew upgrade || return $?
   _ok "Brew upgraded"
-
-  # Refresh yabai's scripting-addition sudoers rule. Idempotent — only
-  # prompts for sudo when the binary hash has actually changed.
-  if command -v yabai >/dev/null 2>&1; then
-    _log "yabai scripting-addition sudoers check"
-    _run "${DOTFILES_DIR}/scripts/95_yabai_sa.sh" \
-      || _warn "yabai sudoers refresh failed (continuing)"
-  fi
-
-  if (( _yabai_upgrading )); then
-    _log "yabai upgraded — starting service"
-    _run yabai --start-service || _warn "yabai --start-service failed"
-  fi
 }
 
 # =========================

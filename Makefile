@@ -10,7 +10,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor link packages apt mise starship zsh ssh-github tmux nvim fonts flatpak yabai-sa mise-launchd macos-animations macos-animations-revert
+.PHONY: all help doctor link packages apt mise starship zsh ssh-github tmux nvim fonts flatpak mise-launchd macos-animations macos-animations-revert
 
 REPO_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 UNAME_S  := $(shell uname -s)
@@ -18,7 +18,7 @@ UNAME_S  := $(shell uname -s)
 # macOS-only steps appended to `make all` (empty on Linux).
 MAC_ONLY_STEPS :=
 ifeq ($(UNAME_S),Darwin)
-MAC_ONLY_STEPS += yabai-sa mise-launchd macos-animations
+MAC_ONLY_STEPS += mise-launchd macos-animations
 endif
 
 help:
@@ -35,7 +35,6 @@ help:
 	@echo "  make ssh-github  - generate/add ssh keys via gh (interactive)"
 	@echo "  make tmux        - install TPM + tmux plugins"
 	@echo "  make nvim        - headless nvim plugin install/update"
-	@echo "  make yabai-sa    - install yabai scripting-addition sudoers rule (macOS only; no-op elsewhere)"
 	@echo "  make mise-launchd - install LaunchAgent so GUI apps see mise shims in PATH (macOS only; no-op elsewhere)"
 	@echo "  make macos-animations - disable macOS UI animations (Reduce Motion, Dock, Finder; macOS only)"
 	@echo "  make macos-animations-revert - restore macOS animation defaults"
@@ -79,9 +78,6 @@ tmux:
 
 nvim:
 	./scripts/70_nvim.sh
-
-yabai-sa:
-	./scripts/95_yabai_sa.sh
 
 mise-launchd:
 	./scripts/96_mise_launchd.sh

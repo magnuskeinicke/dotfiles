@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Kill macOS UI animations that add perceived latency to yabai/skhd
+# Kill macOS UI animations that add perceived latency to window-manager
 # navigation. Idempotent and reversible (see REVERT section at bottom).
 #
 # Run:        ./scripts/97_macos_animations.sh
@@ -65,10 +65,9 @@ defaults write com.apple.dock autohide-delay -float 0
 # Finder operations.
 defaults write com.apple.finder DisableAllAnimations -bool true
 
-# Sequoia: "Click wallpaper to reveal desktop" — yabai's `display --focus`
-# on an empty space registers as a wallpaper click, triggering the
-# zoom-out-and-show-desktop behavior. Disable so keyboard display-focus
-# stays put on empty workspaces.
+# Sequoia: "Click wallpaper to reveal desktop" — clicking an empty area
+# triggers a distracting zoom-out-and-show-desktop. Disable so focus stays
+# put when interacting with empty workspaces.
 defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
 
 echo "==> Relaunching Dock, Finder, WindowManager"

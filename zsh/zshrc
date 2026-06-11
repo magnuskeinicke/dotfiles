@@ -127,6 +127,10 @@ fi
 
 source <(fzf --zsh)
 
+# AeroSpace owns the alt-* namespace (alt-c = workspace C), so fzf's Alt-C
+# cd-widget never reaches the terminal. Move it to Ctrl-F.
+bindkey '^F' fzf-cd-widget
+
 #source /usr/share/fzf/shell/key-bindings.zsh
 
 # Pick a clipboard command available in subshells (fzf bindings run in /bin/sh).

@@ -1,0 +1,137 @@
+# AeroSpace config — based on the shipped default-config.toml.
+# Keeps AeroSpace's STANDARD alt-* keybindings (no custom keymap to maintain).
+# Only the "look" is customised: gaps + mouse-follows-focus.
+# Edit + `aerospace reload-config` to apply live.
+
+config-version = 2
+
+after-startup-command = []
+
+# yabai/skhd/sketchybar fully removed — AeroSpace is the WM.
+start-at-login = true
+
+enable-normalization-flatten-containers = true
+enable-normalization-opposite-orientation-for-nested-containers = true
+
+accordion-padding = 30
+default-root-container-layout = 'tiles'
+default-root-container-orientation = 'auto'
+
+# Mouse follows focus across monitors (default) AND across windows.
+# Note: AeroSpace has NO focus-follows-mouse (hover-to-focus).
+on-focused-monitor-changed = ['move-mouse monitor-lazy-center']
+on-focus-changed = ['move-mouse window-lazy-center']
+
+automatically-unhide-macos-hidden-apps = false
+
+# Six workspaces, named by mnemonic (first letter of purpose), except Linear:
+# alt-l is 'focus right' (hjkl nav), so Linear lives on the V workspace / alt-v.
+#   W=web  S=slack  T=terminal        -> PHL (secondary)
+#   C=conductor  V=linear  M=misc     -> MSI (main)
+persistent-workspaces = ["W", "S", "T", "C", "V", "M"]
+
+on-mode-changed = []
+
+[key-mapping]
+    preset = 'qwerty'
+
+# 10px gaps all round (was window_gap 10 + padding 10 in yabai). No bar to
+# reserve — AeroSpace already leaves room for the macOS menu bar.
+[gaps]
+    inner.horizontal = 10
+    inner.vertical =   10
+    outer.left =       10
+    outer.bottom =     10
+    outer.top =        10
+    outer.right =      10
+
+# Pin each workspace to a monitor by ROLE, not brand -- portable across home and
+# work setups. 'main' = macOS primary (menu-bar screen); 'secondary' = the other.
+# Set the desired screen as macOS main display (System Settings > Displays) at
+# each location: C L M land on main, W S T on secondary.
+[workspace-to-monitor-force-assignment]
+    W = 'secondary'   # web
+    S = 'secondary'   # slack
+    T = 'secondary'   # terminal
+    C = 'main'        # conductor
+    V = 'main'        # linear
+    M = 'main'        # misc
+
+# Auto-assign apps to their home workspace on launch. Combined with the monitor
+# pinning above, each app always opens on the right screen, every boot.
+# Find an app's id with:  aerospace list-apps
+[[on-window-detected]]
+    if.app-id = 'com.brave.Browser'         # web
+    run = 'move-node-to-workspace W'
+
+[[on-window-detected]]
+    if.app-id = 'com.tinyspeck.slackmacgap' # slack
+    run = 'move-node-to-workspace S'
+
+[[on-window-detected]]
+    if.app-id = 'com.mitchellh.ghostty'     # terminal
+    run = 'move-node-to-workspace T'
+
+[[on-window-detected]]
+    if.app-id = 'com.conductor.app'         # conductor
+    run = 'move-node-to-workspace C'
+
+[[on-window-detected]]
+    if.app-id = 'com.linear'                # linear
+    run = 'move-node-to-workspace V'
+
+[mode.main.binding]
+    alt-slash = 'layout tiles horizontal vertical'
+    alt-comma = 'layout accordion horizontal vertical'
+
+    alt-h = 'focus left'
+    alt-j = 'focus down'
+    alt-k = 'focus up'
+    alt-l = 'focus right'
+
+    alt-shift-h = 'move left'
+    alt-shift-j = 'move down'
+    alt-shift-k = 'move up'
+    alt-shift-l = 'move right'
+
+    alt-minus = 'resize smart -50'
+    alt-equal = 'resize smart +50'
+
+    # Workspace switch -- mnemonic letters (Linear on alt-v; alt-l = focus right).
+    alt-w = 'workspace W'   # web
+    alt-s = 'workspace S'   # slack
+    alt-t = 'workspace T'   # terminal
+    alt-c = 'workspace C'   # conductor
+    alt-v = 'workspace V'   # linear
+    alt-m = 'workspace M'   # misc
+
+    # Send focused window to workspace (same keys + Shift).
+    alt-shift-w = 'move-node-to-workspace W'   # web
+    alt-shift-s = 'move-node-to-workspace S'   # slack
+    alt-shift-t = 'move-node-to-workspace T'   # terminal
+    alt-shift-c = 'move-node-to-workspace C'   # conductor
+    alt-shift-v = 'move-node-to-workspace V'   # linear
+    alt-shift-m = 'move-node-to-workspace M'   # misc
+
+    # Cycle workspaces (skips empty ones, wraps end<->start). Right-pinky [ ].
+    alt-leftSquareBracket  = 'workspace --wrap-around prev'
+    alt-rightSquareBracket = 'workspace --wrap-around next'
+    # Same keys + Shift: drag focused window to prev/next workspace and follow it.
+    alt-shift-leftSquareBracket  = 'move-node-to-workspace --wrap-around --focus-follows-window prev'
+    alt-shift-rightSquareBracket = 'move-node-to-workspace --wrap-around --focus-follows-window next'
+
+    alt-tab = 'workspace-back-and-forth'
+    alt-shift-tab = 'move-workspace-to-monitor --wrap-around next'
+
+    alt-shift-semicolon = 'mode service'
+
+[mode.service.binding]
+    esc = ['reload-config', 'mode main']
+    r = ['flatten-workspace-tree', 'mode main'] # reset layout
+    f = ['layout floating tiling', 'mode main'] # Toggle between floating and tiling layout
+    backspace = ['close-all-windows-but-current', 'mode main']
+
+    alt-shift-h = ['join-with left', 'mode main']
+    alt-shift-j = ['join-with down', 'mode main']
+    alt-shift-k = ['join-with up', 'mode main']
+    alt-shift-l = ['join-with right', 'mode main']

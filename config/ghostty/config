@@ -3,7 +3,9 @@ theme = catppuccin-mocha.conf
 cursor-style = block
 cursor-style-blink = false
 cursor-click-to-move = true
-background-opacity = 1.0
+# App-level transparency. yabai used to own window opacity globally; with
+# AeroSpace (no opacity support) this is the only way to keep the look.
+background-opacity = 0.95
 maximize = true
 keybind = ctrl+a>ctrl+q=quit
 confirm-close-surface=false
