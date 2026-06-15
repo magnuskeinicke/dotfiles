@@ -48,4 +48,30 @@ if [ -d "$REPO_DIR/claude" ]; then
   done < <(find "$REPO_DIR/claude" -type f -print0)
 fi
 
+# Agent skills: the dotfiles repo is the source of truth.
+#   ~/.agents            -> dotfiles/.agents        (skills-CLI store + global lock)
+#   ~/.claude/skills/<X>  -> ../../.agents/skills/<X> (so Claude Code discovers them)
+# Only skills tracked in .agents/.skill-lock.json are exposed to Claude, so
+# plugin-managed skills (e.g. caveman) are left untouched.
+if [ -d "$REPO_DIR/.agents" ]; then
+  echo "Linking ~/.agents -> dotfiles/.agents ..."
+  if [ -e "$HOME/.agents" ] && [ ! -L "$HOME/.agents" ]; then
+    echo "  Backing up existing $HOME/.agents -> $HOME/.agents.bak"
+    rm -rf "$HOME/.agents.bak"
+    mv "$HOME/.agents" "$HOME/.agents.bak"
+  fi
+  ln -sfn "$REPO_DIR/.agents" "$HOME/.agents"
+
+  if command -v node >/dev/null 2>&1 && [ -f "$REPO_DIR/.agents/.skill-lock.json" ]; then
+    echo "Linking ~/.claude/skills/* for globally-installed skills ..."
+    mkdir -p "$HOME/.claude/skills"
+    while IFS= read -r name; do
+      [ -n "$name" ] || continue
+      ln -sfn "../../.agents/skills/$name" "$HOME/.claude/skills/$name"
+    done < <(node -e 'try{console.log(Object.keys(require(process.argv[1]).skills||{}).join("\n"))}catch(e){}' "$REPO_DIR/.agents/.skill-lock.json")
+  else
+    echo "  (node not available yet; re-run 'make link' after 'make mise' to link ~/.claude/skills/*)"
+  fi
+fi
+
 echo "Done linking."

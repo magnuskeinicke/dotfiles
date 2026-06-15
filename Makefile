@@ -10,7 +10,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor link packages apt mise starship zsh ssh-github tmux nvim fonts flatpak mise-launchd macos-animations macos-animations-revert
+.PHONY: all help doctor link packages apt mise starship zsh ssh-github tmux nvim fonts flatpak mise-launchd macos-animations macos-animations-revert skills-update
 
 REPO_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 UNAME_S  := $(shell uname -s)
@@ -35,6 +35,7 @@ help:
 	@echo "  make ssh-github  - generate/add ssh keys via gh (interactive)"
 	@echo "  make tmux        - install TPM + tmux plugins"
 	@echo "  make nvim        - headless nvim plugin install/update"
+	@echo "  make skills-update - update vendored agent skills in-place (.agents/) to latest upstream"
 	@echo "  make mise-launchd - install LaunchAgent so GUI apps see mise shims in PATH (macOS only; no-op elsewhere)"
 	@echo "  make macos-animations - disable macOS UI animations (Reduce Motion, Dock, Finder; macOS only)"
 	@echo "  make macos-animations-revert - restore macOS animation defaults"
@@ -87,6 +88,14 @@ macos-animations:
 
 macos-animations-revert:
 	./scripts/97_macos_animations.sh --revert
+
+# Update vendored agent skills to latest upstream. ~/.agents -> dotfiles/.agents,
+# so `skills update -g` rewrites files in-place inside the repo; commit the diff.
+skills-update:
+	@command -v npx >/dev/null || { echo "npx not found (run: make mise)"; exit 1; }
+	npx --yes skills update -g -y
+	@echo "==> Updated. Review & commit changes under .agents/:"
+	@git -C "$(REPO_DIR)" status --short .agents
 
 # ---------- Checks ----------
 doctor:
