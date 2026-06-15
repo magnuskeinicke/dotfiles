@@ -189,10 +189,10 @@ _secret() {
 }
 
 # Personal access tokens
-export GITHUB_PAT="$(_secret github-mcp)"
 export FIGMA_PAT="$(_secret figma-mcp)"
 export POSTHOG_PAT="$(_secret posthog-pat)"
 export CROWDIN_MCP_PAT="$(_secret crowdin-mcp)"
+export LINEAR_MCP_PAT="$(_secret linear-mcp)"
 
 
 # Start tmux if not inside tmux
