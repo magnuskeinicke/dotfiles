@@ -29,6 +29,18 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$HOME/.claude/hooks/reap-stray-dev-servers.sh\"",
+            "timeout": 30,
+            "statusMessage": "Reaping stray dev servers/containers from this worktree..."
+          }
+        ]
+      }
     ]
   },
   "statusLine": {
@@ -58,5 +70,6 @@
   "effortLevel": "xhigh",
   "tui": "fullscreen",
   "theme": "dark",
-  "skipAutoPermissionPrompt": true
+  "skipAutoPermissionPrompt": true,
+  "skipWorkflowUsageWarning": true
 }
