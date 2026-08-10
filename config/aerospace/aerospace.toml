@@ -26,8 +26,8 @@ automatically-unhide-macos-hidden-apps = false
 
 # Six workspaces, named by mnemonic (first letter of purpose), except Linear:
 # alt-l is 'focus right' (hjkl nav), so Linear lives on the V workspace / alt-v.
-#   W=web  S=slack  T=terminal        -> PHL (secondary)
-#   C=conductor  V=linear  M=misc     -> MSI (main)
+#   W=web  S=slack  T=terminal          -> PHL (secondary)
+#   C=conductor+orca  V=linear  M=misc  -> MSI (main)
 persistent-workspaces = ["W", "S", "T", "C", "V", "M"]
 
 on-mode-changed = []
@@ -48,12 +48,12 @@ on-mode-changed = []
 # Pin each workspace to a monitor by ROLE, not brand -- portable across home and
 # work setups. 'main' = macOS primary (menu-bar screen); 'secondary' = the other.
 # Set the desired screen as macOS main display (System Settings > Displays) at
-# each location: C L M land on main, W S T on secondary.
+# each location: C V O M land on main, W S T on secondary.
 [workspace-to-monitor-force-assignment]
     W = 'secondary'   # web
     S = 'secondary'   # slack
     T = 'secondary'   # terminal
-    C = 'main'        # conductor
+    C = 'main'        # conductor + orca
     V = 'main'        # linear
     M = 'main'        # misc
 
@@ -80,6 +80,10 @@ on-mode-changed = []
     if.app-id = 'com.linear'                # linear
     run = 'move-node-to-workspace V'
 
+[[on-window-detected]]
+    if.app-id = 'com.stablyai.orca'         # orca
+    run = 'move-node-to-workspace C'
+
 [mode.main.binding]
     alt-slash = 'layout tiles horizontal vertical'
     alt-comma = 'layout accordion horizontal vertical'
@@ -101,7 +105,7 @@ on-mode-changed = []
     alt-w = 'workspace W'   # web
     alt-s = 'workspace S'   # slack
     alt-t = 'workspace T'   # terminal
-    alt-c = 'workspace C'   # conductor
+    alt-c = 'workspace C'   # conductor + orca
     alt-v = 'workspace V'   # linear
     alt-m = 'workspace M'   # misc
 
@@ -109,7 +113,7 @@ on-mode-changed = []
     alt-shift-w = 'move-node-to-workspace W'   # web
     alt-shift-s = 'move-node-to-workspace S'   # slack
     alt-shift-t = 'move-node-to-workspace T'   # terminal
-    alt-shift-c = 'move-node-to-workspace C'   # conductor
+    alt-shift-c = 'move-node-to-workspace C'   # conductor + orca
     alt-shift-v = 'move-node-to-workspace V'   # linear
     alt-shift-m = 'move-node-to-workspace M'   # misc
 
