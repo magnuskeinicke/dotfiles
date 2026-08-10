@@ -3,7 +3,17 @@ name: grill-with-docs
 description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation (CONTEXT.md, ADRs) inline as decisions crystallise. Use when user wants to stress-test a plan against their project's language and documented decisions.
 ---
 
+<convention-docs>
+
+This skill's convention docs (issue tracker, triage labels, domain layout) live in global config at `~/.claude/docs/agents/` — read from there, the same in every worktree. Nothing to seed.
+
+For this POC the domain content this skill writes also lives in **global config, not the repo**: create/update `CONTEXT.md` at `~/.claude/docs/agents/CONTEXT.md` and ADRs under `~/.claude/docs/agents/adr/`. `~/.claude/docs/agents/domain.md` is the authoritative location — it overrides the generic "repo root" / `docs/adr/` paths in the file-structure illustration and `CONTEXT-FORMAT.md` / `ADR-FORMAT.md` below.
+
+</convention-docs>
+
 <what-to-do>
+
+If I seeded this session with an issue-tracker ticket (a Linear `SER-1234` id or URL, a GitHub issue number, etc.), fetch it first and treat that ticket as the plan under discussion — read its title, description, acceptance criteria, and any links, and follow the links to their source-of-truth artifacts. The PRD produced next by `/to-prd` is written back into this same ticket, so the ticket id is the through-line for the whole pipeline (grill → PRD → slices). Note the ticket id where it won't get lost.
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
@@ -49,7 +59,7 @@ If a `CONTEXT-MAP.md` exists at the root, the repo has multiple contexts. The ma
 │       └── docs/adr/
 ```
 
-Create files lazily — only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
+Create files lazily — only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `adr/` exists, create it when the first ADR is needed. **For this POC create them at the global paths from the `<convention-docs>` note above** (`~/.claude/docs/agents/CONTEXT.md`, `~/.claude/docs/agents/adr/`), not in the repo.
 
 ## During the session
 

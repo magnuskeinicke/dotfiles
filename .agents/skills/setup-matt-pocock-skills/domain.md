@@ -2,6 +2,8 @@
 
 How the engineering skills should consume this repo's domain documentation when exploring the codebase.
 
+> **Location** (fill in for this setup): by default `CONTEXT.md` + `adr/` live at the repo root. For a POC they may live in **global config** at `~/.claude/docs/agents/CONTEXT.md` + `~/.claude/docs/agents/adr/` so they stay out of the repo. State the chosen location here — it is authoritative and overrides the "repo root" wording below.
+
 ## Before exploring, read these
 
 - **`CONTEXT.md`** at the repo root, or

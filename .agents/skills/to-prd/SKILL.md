@@ -1,11 +1,20 @@
 ---
 name: to-prd
-description: Turn the current conversation context into a PRD and publish it to the project issue tracker. Use when user wants to create a PRD from the current context.
+description: Turn the current conversation context into a PRD and write it into the parent ticket on the project issue tracker. Use when the user wants to create a PRD from the current context (typically right after a /grill-with-docs session).
 ---
 
-This skill takes the current conversation context and codebase understanding and produces a PRD. Do NOT interview the user — just synthesize what you already know.
+This skill takes the current conversation context and codebase understanding and produces a PRD, then publishes it as a **comment on a single parent ticket** on the issue tracker — extending the ticket, never overwriting its description. Do NOT interview the user — just synthesize what you already know. The detailed implementation tickets are NOT created here; `/to-issues` slices this PRD into sub-tickets next.
 
-The issue tracker and triage label vocabulary should have been provided to you — run `/setup-matt-pocock-skills` if not.
+Read `~/.claude/docs/agents/issue-tracker.md` for how this repo's tracker works (which tool/CLI to use, how to create vs update a ticket, how parent ↔ child issues relate) and `~/.claude/docs/agents/triage-labels.md` for the label vocabulary. If those files are missing, run `/setup-matt-pocock-skills` first.
+
+## The parent ticket
+
+The PRD lives in one ticket — the **parent** that every slice will hang off. The PRD is published as a **comment** on that ticket; the ticket's existing description is **never overwritten**. The PRD extends what's already there, and must not duplicate content the description already covers.
+
+- **If this session was seeded from an existing ticket** (a `/grill-with-docs` started from a `SER-1234` / issue id, or the user named one): that ticket IS the parent. **Add the PRD as a comment** — leave the existing description untouched. Do not create a second ticket.
+- **If there is no seed ticket**: create one for the PRD (follow the create path in `~/.claude/docs/agents/issue-tracker.md` — for Linear that's the `create-issue` flow: resolve team + assignee, dup-check, then `save_issue`). Give it a short one-line description if it has none, then add the PRD as a comment. Report the new id; it becomes the parent.
+
+Either way you end with exactly one parent ticket id carrying the PRD in a comment. Surface it clearly — `/to-issues` needs it.
 
 ## Process
 
@@ -15,7 +24,16 @@ The issue tracker and triage label vocabulary should have been provided to you �
 
 Check with the user that these seams match their expectations.
 
-3. Write the PRD using the template below, then publish it to the project issue tracker. Apply the `ready-for-agent` triage label - no need for additional triage.
+3. Write the PRD using the template below.
+
+4. Publish it to the parent ticket (see "The parent ticket" above):
+   - Add the PRD as a **comment** (`save_comment`) under a `# PRD` heading. Do NOT touch the ticket's description — the PRD is additive, never a rewrite, and must not duplicate what the description already says.
+   - Apply a `type:*` label **and** the `manager:skip` label, per `~/.claude/docs/agents/triage-labels.md`. Preserve existing labels — add, don't replace. Create `manager:skip` first if the team lacks it (`list_issue_labels` → `create_issue_label`, muted grey e.g. `#6b7280`).
+   - `manager:skip` is the triage opt-out: it tells `weekly-ticket-manager` to leave this ticket alone. Stamp it now — before any slice exists — because a sub-issue-less PRD parent otherwise looks standalone to the weekly triage and could be wrongly routed `agent:ready`.
+   - Do NOT apply any routing label. The parent is a container, never a unit of agent work, so it must never carry `agent:ready` (the autonomous-loop trigger) or the `slice:next` work pointer. `/to-issues` puts the work pointer on the first slice instead.
+   - Do NOT create sub-issues, change status, or reassign. That's the next step's job.
+
+5. Report the parent ticket id + URL and tell the user to run `/to-issues` to slice it.
 
 <prd-template>
 
@@ -62,6 +80,10 @@ A list of testing decisions that were made. Include:
 - A description of what makes a good test (only test external behavior, not implementation details)
 - Which modules will be tested
 - Prior art for the tests (i.e. similar types of tests in the codebase)
+
+## Design
+
+Where the design lives, if this feature renders UI. Record the Figma file key and a deep-link per screen/state so `/to-issues` can attach per-slice node links and screenshots to each sub-ticket. Resolve URLs via the `figma-design-url` skill. If there is no design yet, say so.
 
 ## Out of Scope
 

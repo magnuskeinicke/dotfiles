@@ -1,5 +1,7 @@
 # HTML Report Format
 
+> **Role:** the report is now the *attachment* on the Linear parent issue ([LINEAR-ISSUES.md](LINEAR-ISSUES.md)), not the sole deliverable. It preserves the hand-built editorial visuals that Linear markdown can't render. Graph-shaped before/after diagrams also live inline in the child issues as ` ```mermaid ` blocks; the scaffold below is unchanged.
+
 The architectural review is rendered as a single self-contained HTML file in the OS temp directory. Tailwind and Mermaid both come from CDNs. Mermaid handles graph-shaped diagrams reliably; hand-built divs and inline SVG handle the more editorial visuals (mass diagrams, cross-sections). Mix the two — don't lean on Mermaid for everything, it'll start to look generic.
 
 ## Scaffold

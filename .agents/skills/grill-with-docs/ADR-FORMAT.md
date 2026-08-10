@@ -1,5 +1,7 @@
 # ADR Format
 
+> **Location** is set by `~/.claude/docs/agents/domain.md`. For this POC, ADRs live **globally** at `~/.claude/docs/agents/adr/`, not in the repo. Read `docs/adr/` below as that global path.
+
 ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc.
 
 Create the `docs/adr/` directory lazily — only when the first ADR is needed.

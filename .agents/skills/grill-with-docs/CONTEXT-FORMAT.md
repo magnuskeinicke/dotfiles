@@ -1,5 +1,7 @@
 # CONTEXT.md Format
 
+> **Location** is set by `~/.claude/docs/agents/domain.md`. For this POC, `CONTEXT.md` lives **globally** at `~/.claude/docs/agents/CONTEXT.md`, not at the repo root. Read "repo root" below as that global path.
+
 ## Structure
 
 ```md
