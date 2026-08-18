@@ -153,9 +153,25 @@ Workflow({
 ```
 
 The workflow returns a compact summary: `tier` (trivial | standard | **escalate**),
-what shipped, the diff stat, which reviewers ran, the findings it fixed, any
-residual judgement-call notes, and Playwright proof paths. Read the summary —
-don't pull full logs into this context.
+what shipped, the diff stat, which reviewers ran (baseline + consolidated
+**web/server lane** reviewers — at most 2 lanes — plus the **reuse reviewer**
+whenever the diff added files, plus Opus Playwright when user-facing), the
+findings it fixed, any residual judgement-call or `[disputed:…]` notes
+(findings the implementer rejected with evidence — I adjudicate those on the
+draft PR), the `provenance` table (added file → mirrored exemplar or declared
+deviation — the convention audit trail), `consolidations` (generalizable new
+code the reuse reviewer says belongs in an existing lib — follow-up work, never
+fixed in-PR), Playwright proof paths, and `playwrightCriteria` (per-AC
+PASS/FAIL + screenshot). Read the summary — don't pull full logs into this
+context.
+
+**Tests gate:** reviewers never see red code. If the implementer reports
+`testsGreen=false`, the workflow spends one dedicated tests-fix pass before any
+reviewer runs; if the code is still red after that, review is **skipped
+entirely** and the ticket comes back `shipped=false` with a note — surface that
+on the draft PR (or bounce the ticket) rather than pretending it was reviewed.
+Implementers must prove green via `testEvidence` (commands + summary lines run
+in-session), never assert it.
 
 **If the workflow returns `escalate`** (triage found the ticket is bigger /
 more ambiguous / higher-blast-radius than its `agent:ready` label claimed): the
@@ -229,7 +245,14 @@ Only when the workflow shipped a real change (`tier` ≠ escalate, tests green):
    draft.
 2. **Flip it to draft** immediately so it can't be merged without me:
    `gh pr ready <number> --undo`. The draft state IS the review gate.
-3. **Comment on the ticket** with the solve summary — use this block:
+3. **Upload QA evidence first (when Playwright ran).** The workflow returns
+   `playwrightCriteria` (per-AC PASS/FAIL + screenshot path) and
+   `playwrightProof`. Upload the proof files to the ticket via the Linear MCP
+   attachment flow (`prepare_attachment_upload` → PUT the file to the returned
+   URL → `create_attachment_from_upload`), so QA can verify each criterion from
+   the ticket without pulling the branch. Failed criteria are uploaded too —
+   evidence of what broke, not just what works.
+4. **Comment on the ticket** with the solve summary — use this block:
 
    ```md
    ## Autonomous solve
@@ -240,17 +263,34 @@ Only when the workflow shipped a real change (`tier` ≠ escalate, tests green):
    Shipped:
    <1–2 lines: what was built.>
 
-   Reviewers run: <baseline, frontend, …>
+   Reviewers run: <baseline, web[frontend+…], server[backend+…], reuse, playwright>
    Fixed in review: <n finding(s)>  ·  Tests: green
 
+   Convention provenance:
+   | Added file | Mirrors / deviation |
+   | --- | --- |
+   | <path> | <mirroredFrom exemplar, or [deviation: reason]> |
+
+   QA evidence:
+   | AC | Result | Proof |
+   | --- | --- | --- |
+   | <criterion> | PASS/FAIL | <uploaded screenshot link> |
+
+   Consolidation follow-ups (not fixed in this PR — candidates for their own tickets):
+   - <consolidation title — targetLib — detail>
+
    Flagged for your review:
-   - <residual judgement-call note, if any>
+   - <residual judgement-call or [disputed:…] note, if any>
 
    _Solved by solve-ready-tickets. Not merged, not marked done — review the draft PR._
    ```
 
-   Make it idempotent: if a comment already starts with `## Autonomous solve`,
-   update it rather than adding a second.
+   Omit the QA evidence table when Playwright didn't run, the provenance table
+   when no files were added, and the consolidation section when the reuse
+   reviewer returned none. Consolidations are surfaced for me to decide — this
+   skill does NOT file follow-up tickets (unlike `/work-slice`); it never
+   creates tickets. Make it idempotent: if a comment already starts with
+   `## Autonomous solve`, update it rather than adding a second.
 
 Leave the ticket in **`Dev in progress`** (or a review state if the team has
 one). **Never** mark it done, merge, mark the PR ready, or run
