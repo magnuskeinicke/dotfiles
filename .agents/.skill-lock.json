@@ -10,15 +10,6 @@
       "installedAt": "2026-06-15T14:07:09.799Z",
       "updatedAt": "2026-06-15T14:07:09.799Z"
     },
-    "find-skills": {
-      "source": "vercel-labs/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/vercel-labs/skills.git",
-      "skillPath": "skills/find-skills/SKILL.md",
-      "skillFolderHash": "3013fdeb8a11b10b1eb795ec3ae8bfca38f7c26d",
-      "installedAt": "2026-06-15T14:07:19.746Z",
-      "updatedAt": "2026-06-15T14:07:19.746Z"
-    },
     "gh-stack": {
       "source": "github/gh-stack",
       "sourceType": "github",
@@ -63,24 +54,6 @@
       "skillFolderHash": "688c17ec27fe9309d84987716aca37b5ce7f3a88",
       "installedAt": "2026-06-15T14:07:09.805Z",
       "updatedAt": "2026-06-15T14:07:09.805Z"
-    },
-    "linear-release-setup": {
-      "source": "linear/linear-release",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/linear/linear-release.git",
-      "skillPath": "skills/linear-release-setup/SKILL.md",
-      "skillFolderHash": "bdf2461467c348766eb2d8a38a3a5f44e8aae0aa",
-      "installedAt": "2026-06-23T10:40:57.608Z",
-      "updatedAt": "2026-06-23T10:40:57.608Z"
-    },
-    "setup-matt-pocock-skills": {
-      "source": "mattpocock/skills",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/mattpocock/skills.git",
-      "skillPath": "skills/engineering/setup-matt-pocock-skills/SKILL.md",
-      "skillFolderHash": "77638955bebe492948244f1338e54ca1a9445c29",
-      "installedAt": "2026-06-15T14:07:09.806Z",
-      "updatedAt": "2026-06-15T14:07:09.806Z"
     },
     "tdd": {
       "source": "mattpocock/skills",
