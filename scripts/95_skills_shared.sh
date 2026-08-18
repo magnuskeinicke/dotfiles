@@ -19,6 +19,7 @@ MODE="${1:-sync}"
 TARGETS=(
   "$REPO_DIR/claude/skills/work-slice/work-slice-loop.workflow.js"
   "$REPO_DIR/claude/skills/solve-ready-tickets/solve-ready-loop.workflow.js"
+  "$REPO_DIR/claude/skills/review-code/review-code.workflow.js"
 )
 
 test -f "$SRC" || { echo "missing $SRC"; exit 1; }

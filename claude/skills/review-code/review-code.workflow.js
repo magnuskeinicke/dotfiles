@@ -1,3 +1,38 @@
+export const meta = {
+  name: 'review-code',
+  description:
+    'Ad-hoc review: fan out the shared reviewer lanes (baseline + diff-matched web/server lanes + reuse) on any diff — one read-only round in parallel (Sonnet), returns the aggregated findings report. No fix loop.',
+  phases: [
+    { title: 'Review', detail: 'baseline + diff-matched web/server lanes + reuse reviewer in parallel (Sonnet)', model: 'sonnet' },
+  ],
+};
+
+// ── args (passed by the main session) ──────────────────────────────────────
+// { inspect, context, changedFiles, addedFiles, untrackedFiles,
+//   declaredAreas, repoConfig }
+// The Workflow runtime can deliver `args` as a JSON *string*, not a parsed
+// object — normalise it here.
+let A = args || {};
+if (typeof A === 'string') {
+  try {
+    A = JSON.parse(A);
+  } catch {
+    A = {};
+  }
+}
+A = A || {};
+const CFG = A.repoConfig || {}; // from ~/.claude/docs/agents/repo-config.md
+// How reviewers see the code under review — a command plus any caveats,
+// e.g. "git diff development...HEAD" or "git diff HEAD (uncommitted changes)".
+const INSPECT = A.inspect ? String(A.inspect) : 'git diff HEAD  # uncommitted changes vs HEAD';
+const CONTEXT = A.context ? String(A.context) : '';
+const LIB_MAP = CFG.libMap
+  ? Object.entries(CFG.libMap)
+      .map(([lib, purpose]) => `- ${lib}: ${purpose}`)
+      .join('\n')
+  : '';
+
+// >>> shared:reviewer-registry — generated from claude/skills/_shared/reviewer-registry.js; edit there and run `make skills-shared`
 // Shared reviewer registry for the feature-dev workflow scripts
 // (work-slice-loop, solve-ready-loop, review-code). Workflow scripts must be
 // self-contained — they cannot import this file — so `make skills-shared`
@@ -281,4 +316,120 @@ const PLAYWRIGHT_SCHEMA = {
     notes: { type: 'array', items: { type: 'string' } },
   },
   required: ['area', 'criteria', 'blockingFindings', 'notes'],
+};
+// <<< shared:reviewer-registry
+
+const AREA_COMPILED = compileAreaPaths(CFG.areaPaths || DEFAULT_AREA_PATHS);
+const changedFiles = A.changedFiles || [];
+const addedFiles = A.addedFiles || [];
+const untrackedFiles = A.untrackedFiles || [];
+const declaredAreas = A.declaredAreas || [];
+
+// ── prompt builders ──────────────────────────────────────────────────────────
+const CONTRACT = `This is an AD-HOC review — no slice ticket, no acceptance criteria unless given below, and NO fix loop: your findings go straight to the human, so make every one self-contained and actionable.
+${CONTEXT ? `\nContext from the requester:\n${CONTEXT}\n` : ''}
+Code under review — inspect it with:
+\`${INSPECT}\`
+(read surrounding files as needed for context)${
+  untrackedFiles.length
+    ? `\n\nUntracked NEW files also under review (NOT in the diff — read each in full):\n${untrackedFiles.map((f) => `- ${f}`).join('\n')}`
+    : ''
+}`;
+
+function reviewerPrompt(area, def) {
+  return `You are an INDEPENDENT, READ-ONLY reviewer for the "${area}" scope of this change. You MUST NOT edit any files — only report.
+
+${CONTRACT}
+
+Apply the conventions from the ${def.skills} skill(s) — consult them via the Skill tool if available, otherwise apply their known rules.
+Focus on: ${def.focus}
+
+Report ONLY:
+- blockingFindings: correctness bugs or convention/reuse violations in YOUR scope that should not ship. Each with title, file, line, detail, and a concrete suggestedFix. If none, return an empty array.
+- notes: judgement-call / debatable points that should NOT block.
+Set "area" to "${area}". Do not invent problems to look productive — an empty blockingFindings array is the correct result for clean code.`;
+}
+
+function reusePrompt(added) {
+  return `You are the INDEPENDENT, READ-ONLY reuse/consolidation reviewer for this change. You MUST NOT edit any files — only report.
+
+${CONTRACT}
+
+Files ADDED by this change (your scope):
+${added.map((f) => `- ${f}`).join('\n')}
+
+This is an ad-hoc review: there is NO implementer provenance table to audit — skip that part of your usual focus. Otherwise: ${REUSE.focus.split(' Also audit')[0]}
+${LIB_MAP ? `\nExisting libs (search index for equivalents):\n${LIB_MAP}` : ''}
+
+Report ONLY:
+- blockingFindings: an added function/component/hook/util/type that duplicates an existing lib/design-system equivalent — name the equivalent, the fix is "use it, delete the copy". Each with title, file, line, detail, concrete suggestedFix.
+- consolidations: genuinely generalizable NEW code that belongs in an existing lib as follow-up work — title, detail (what + which call sites would adopt it), targetLib. NEVER put these in blockingFindings.
+- notes: judgement-call points that should not block.
+Set "area" to "reuse". Do not invent problems to look productive — empty arrays are the correct result for clean code.`;
+}
+
+// ── run: one parallel review round, no fix loop ──────────────────────────────
+phase('Review');
+const areas = selectAreas(AREA_COMPILED, [...changedFiles, ...untrackedFiles], declaredAreas);
+const laneEntries = groupAreasByLane(areas);
+// untracked files are added-by-definition — they gate the reuse reviewer too
+const reuseScope = [...new Set([...addedFiles, ...untrackedFiles])];
+const runReuse = reuseScope.length > 0;
+const ran = [
+  'baseline',
+  ...laneEntries.map(([lane, members]) => `${lane}[${members.join('+')}]`),
+  ...(runReuse ? ['reuse'] : []),
+];
+log(`Reviewers: ${ran.join(', ')} (${changedFiles.length + untrackedFiles.length} file(s) under review)`);
+
+const thunks = [
+  () =>
+    agent(reviewerPrompt('baseline', BASELINE), {
+      label: 'review:baseline',
+      phase: 'Review',
+      model: 'sonnet',
+      schema: FINDINGS_SCHEMA,
+    }),
+];
+for (const [lane, members] of laneEntries) {
+  thunks.push(() =>
+    agent(reviewerPrompt(lane, laneDef(members)), {
+      label: `review:${lane}`,
+      phase: 'Review',
+      model: 'sonnet',
+      schema: FINDINGS_SCHEMA,
+    }),
+  );
+}
+if (runReuse) {
+  thunks.push(() =>
+    agent(reusePrompt(reuseScope), {
+      label: 'review:reuse',
+      phase: 'Review',
+      model: 'sonnet',
+      schema: FINDINGS_SCHEMA,
+    }),
+  );
+}
+
+const reviews = (await parallel(thunks)).filter(Boolean);
+
+const blocking = reviews.flatMap((r) => (r.blockingFindings || []).map((f) => ({ ...f, area: r.area })));
+const notes = reviews.flatMap((r) => (r.notes || []).map((n) => `[${r.area}] ${n}`));
+const consolidations = reviews.flatMap((r) => r.consolidations || []);
+
+log(
+  blocking.length === 0
+    ? 'Clean — no blocking findings.'
+    : `${blocking.length} blocking finding(s) across ${new Set(blocking.map((f) => f.area)).size} reviewer(s).`,
+);
+
+return {
+  clean: blocking.length === 0,
+  reviewers: ran,
+  areasTriggered: areas,
+  reviewersReturned: reviews.map((r) => r.area), // vs `reviewers` — a gap means an agent died
+  blockingFindings: blocking,
+  notes: [...new Set(notes)],
+  consolidations: [...new Map(consolidations.map((c) => [c.title, c])).values()],
 };
