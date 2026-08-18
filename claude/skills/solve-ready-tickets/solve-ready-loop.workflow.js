@@ -43,7 +43,7 @@ const LIB_MAP = CFG.libMap
 
 // >>> shared:reviewer-registry — generated from claude/skills/_shared/reviewer-registry.js; edit there and run `make skills-shared`
 // Shared reviewer registry for the feature-dev workflow scripts
-// (work-slice-loop, solve-ready-loop). Workflow scripts must be
+// (work-slice-loop, solve-ready-loop, review-code). Workflow scripts must be
 // self-contained — they cannot import this file — so `make skills-shared`
 // copies this block verbatim into each script between the
 // `// >>> shared:reviewer-registry` / `// <<< shared:reviewer-registry`
