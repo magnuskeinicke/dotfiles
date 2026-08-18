@@ -2,3 +2,4 @@
 **/config/cosmic/**/*screenshot*
 # Per-machine Ghostty overlay; set by scripts/90_link.sh based on uname.
 config/ghostty/config-os
+.DS_Store
