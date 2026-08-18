@@ -1,15 +1,6 @@
 {
   "version": 3,
   "skills": {
-    "computer-use": {
-      "source": "stablyai/orca",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/stablyai/orca.git",
-      "skillPath": "skills/computer-use/SKILL.md",
-      "skillFolderHash": "2072384f53670cb61d93f4f6264ad2d8f6b5239c",
-      "installedAt": "2026-07-06T06:59:55.979Z",
-      "updatedAt": "2026-08-07T06:06:34.720Z"
-    },
     "diagnose": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -82,24 +73,6 @@
       "installedAt": "2026-06-23T10:40:57.608Z",
       "updatedAt": "2026-06-23T10:40:57.608Z"
     },
-    "orca-cli": {
-      "source": "stablyai/orca",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/stablyai/orca.git",
-      "skillPath": "skills/orca-cli/SKILL.md",
-      "skillFolderHash": "97f6596bb43a56c6e81246f077c35144c9025343",
-      "installedAt": "2026-07-06T07:53:26.391Z",
-      "updatedAt": "2026-08-07T06:06:39.212Z"
-    },
-    "orchestration": {
-      "source": "stablyai/orca",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/stablyai/orca.git",
-      "skillPath": "skills/orchestration/SKILL.md",
-      "skillFolderHash": "9aa26fde93c0592e5983cdca1ccd33b402802255",
-      "installedAt": "2026-07-06T07:00:31.329Z",
-      "updatedAt": "2026-08-07T06:06:43.734Z"
-    },
     "setup-matt-pocock-skills": {
       "source": "mattpocock/skills",
       "sourceType": "github",
@@ -135,15 +108,6 @@
       "skillFolderHash": "fb4503f54bc618da08df2fd74109fbe57e4d8150",
       "installedAt": "2026-06-15T14:07:09.809Z",
       "updatedAt": "2026-06-15T14:07:09.809Z"
-    },
-    "orca-linear": {
-      "source": "stablyai/orca",
-      "sourceType": "github",
-      "sourceUrl": "https://github.com/stablyai/orca.git",
-      "skillPath": "skills/orca-linear/SKILL.md",
-      "skillFolderHash": "091d9bcc279d7ec7f4d3f63929f01f8b9e3db68d",
-      "installedAt": "2026-08-07T06:23:24.739Z",
-      "updatedAt": "2026-08-07T06:23:24.739Z"
     }
   },
   "dismissed": {
