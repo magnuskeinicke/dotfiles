@@ -21,6 +21,8 @@ Ask the questions one at a time, waiting for feedback on each question before co
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
 
+Sibling: `grill-me` is the lightweight, docs-free variant of this interview — use it when the project keeps no glossary/ADRs, or for a quick stress-test with no documentation upkeep.
+
 </what-to-do>
 
 <supporting-info>
