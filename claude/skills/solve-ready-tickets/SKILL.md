@@ -24,9 +24,12 @@ to review. The two are a producer/consumer pair joined by the `agent:ready`
 label.
 
 Read `~/.claude/docs/agents/issue-tracker.md` (workspace ids, how to fetch /
-claim / link issues) and `~/.claude/docs/agents/triage-labels.md` (`agent:ready`
+claim / link issues), `~/.claude/docs/agents/triage-labels.md` (`agent:ready`
 is **the autonomous-loop trigger**, owned by `daily-ticket-manager`; the
-additive label-write rule). If those are missing, run `/setup-matt-pocock-skills`.
+additive label-write rule), and `~/.claude/docs/agents/repo-config.md` (the
+repo-specific values passed to the workflow as `repoConfig`). If the first two
+are missing, run `/setup-matt-pocock-skills`; if `repo-config.md` is missing,
+the workflow falls back to its built-in Seranote defaults.
 
 This skill **never** marks an issue done, merges, approves, or runs compliance.
 Its terminal state is a **draft PR + a summary comment**. Every output gets human
@@ -68,7 +71,8 @@ Then **drop**, in this order:
    guard anyway.)
 2. Any ticket carrying **`needs:human`** — never both, but guard.
 3. Any ticket **already claimed**: an existing `ser-<n>-*` branch
-   (`git branch --all --list 'ser-<n>-*'`), or an open PR referencing the issue
+   (run `git fetch --prune origin` first so remote branches are current, then
+   `git branch --all --list '*ser-<n>-*'`), or an open PR referencing the issue
    (`gh pr list --search "SER-<n>" --state open`). The claim in Step 2 clears
    `agent:ready` precisely so a re-run never re-grabs the same ticket, but branch/PR
    presence is the belt-and-braces check for in-flight work.
@@ -137,9 +141,13 @@ Workflow({
     title,               // issue title
     acceptanceCriteria,  // verbatim, array or string
     baseBranch: "development",
-    worktree             // absolute worktree path from Step 3 — threaded into every
+    worktree,            // absolute worktree path from Step 3 — threaded into every
                          // phase prompt so all work happens in the worktree, never
                          // the main checkout. Omit only if running in-place.
+    repoConfig           // the JSON block from ~/.claude/docs/agents/repo-config.md
+                         // (integration branch, dev-server command, e2e dir,
+                         // browser-guide path, area→path map). Omit if the file is
+                         // missing — the workflow falls back to built-in defaults.
   }
 })
 ```

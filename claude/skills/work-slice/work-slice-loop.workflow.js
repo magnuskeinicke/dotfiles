@@ -1,20 +1,32 @@
 export const meta = {
   name: 'work-slice-loop',
   description:
-    'Implement one PRD slice (Sonnet 5, TDD), loop targeted reviewers in parallel ⇄ fixes to a 5-round cap, then run a dedicated Playwright user-story loop (max 3) on user-facing changes. Returns a structured summary for the human gate.',
+    'Implement one PRD slice (Opus, TDD), loop targeted reviewers in parallel ⇄ fixes to a 5-round cap, then run a dedicated Playwright user-story loop (max 3) on user-facing changes. Returns a structured summary for the human gate.',
   phases: [
-    { title: 'Implement', detail: 'Sonnet 5 (medium effort) agent, test-first per acceptance criterion', model: 'claude-sonnet-5' },
-    { title: 'Review', detail: 'baseline + diff-matched area reviewers in parallel (high effort)', model: 'claude-sonnet-5' },
-    { title: 'Fix', detail: 'resolves all blocking findings test-first (review-fix: Sonnet 5 medium; playwright-fix: Opus 4.8 high)', model: 'claude-sonnet-5' },
-    { title: 'Playwright', detail: 'dedicated post-convergence user-story loop (Opus 4.8 high verify ⇄ fix), max 3', model: 'claude-opus-4-8' },
+    { title: 'Implement', detail: 'Opus agent, test-first per acceptance criterion', model: 'opus' },
+    { title: 'Review', detail: 'baseline + diff-matched area reviewers in parallel (Sonnet)', model: 'sonnet' },
+    { title: 'Fix', detail: 'Opus resolves all blocking findings test-first', model: 'opus' },
+    { title: 'Playwright', detail: 'dedicated post-convergence user-story loop (verify ⇄ fix), max 3', model: 'opus' },
   ],
 };
 
 // ── args (passed by the main session) ──────────────────────────────────────
-// { sliceId, acceptanceCriteria, whereToLook, figma, baseBranch, prdContract }
-const A = args || {};
+// { sliceId, acceptanceCriteria, whereToLook, figma, baseBranch, prdContract, repoConfig }
+// The Workflow runtime can deliver `args` as a JSON *string*, not a parsed
+// object — normalise it here so A.sliceId etc. resolve (otherwise every run
+// works "(unknown slice)" with no acceptance criteria).
+let A = args || {};
+if (typeof A === 'string') {
+  try {
+    A = JSON.parse(A);
+  } catch {
+    A = {};
+  }
+}
+A = A || {};
+const CFG = A.repoConfig || {}; // from ~/.claude/docs/agents/repo-config.md
 const SLICE = A.sliceId || '(unknown slice)';
-const BASE = A.baseBranch || 'development';
+const BASE = A.baseBranch || CFG.integrationBranch || 'development';
 const AC = Array.isArray(A.acceptanceCriteria)
   ? A.acceptanceCriteria.map((c) => `- ${c}`).join('\n')
   : String(A.acceptanceCriteria || '(see slice ticket)');
@@ -23,8 +35,18 @@ const FIGMA = A.figma ? String(A.figma) : '';
 const PRD = A.prdContract ? String(A.prdContract) : '';
 const MAX_ROUNDS = 5;
 const PW_MAX_ROUNDS = 3;
+const DEV_SERVER = CFG.devServerCommand || 'DEV_LOGIN_ENABLED_SERVER=true pnpm nx portless seranote-web';
+const E2E_DIR = CFG.e2eDir || 'apps/seranote-web-e2e/';
+const BROWSER_GUIDE = CFG.browserGuidePath || '.claude/skills/dev-loop/browser-guide.md';
 
-// ── reviewer registry: area → anchor skill(s) + review focus ────────────────
+// >>> shared:reviewer-registry — generated from claude/skills/_shared/reviewer-registry.js; edit there and run `make skills-shared`
+// Shared reviewer registry for the feature-dev workflow scripts
+// (work-slice-loop, solve-ready-loop). Workflow scripts must be
+// self-contained — they cannot import this file — so `make skills-shared`
+// copies this block verbatim into each script between the
+// `// >>> shared:reviewer-registry` / `// <<< shared:reviewer-registry`
+// markers. Edit HERE, never in the generated blocks; `make skills-shared`
+// re-syncs, `./scripts/95_skills_shared.sh --check` fails on drift.
 const KNOWN_AREAS = ['frontend', 'backend', 'database', 'i18n', 'security', 'performance'];
 
 const REVIEWERS = {
@@ -66,33 +88,33 @@ const BASELINE = {
     'correctness bugs, missed acceptance criteria, convention/reuse misses, and test quality — NOT style nits.',
 };
 
-// ── deterministic path → area mapping (unioned with agent-declared areas) ───
-function pathAreas(files) {
-  const set = new Set();
-  for (const f of files || []) {
-    if (/^libs\/ui\/web\//.test(f) || /^apps\/seranote-web\/.*\.tsx$/.test(f) || /\.stories\.tsx$/.test(f))
-      set.add('frontend');
-    if (/^libs\/backend\//.test(f)) set.add('backend');
-    if (
-      /^drizzle\//.test(f) ||
-      /libs\/backend\/db\/.*schemas\//.test(f) ||
-      /\/relations\//.test(f) ||
-      /drizzle\.config\.ts$/.test(f)
-    )
-      set.add('database');
-    if (/apps\/seranote-web\/src\/i18n\//.test(f) || /(^|\/)en\.json$/.test(f)) set.add('i18n');
-    if (/^libs\/backend\/actions\//.test(f) || /auth/i.test(f) || /\.env/.test(f)) set.add('security');
-  }
-  return set;
+// area → path patterns (regex sources; object form `{re, flags}` carries flags).
+// The repo-specific default below is overridable per repo via
+// `repoConfig.areaPaths` from ~/.claude/docs/agents/repo-config.md.
+const DEFAULT_AREA_PATHS = {
+  frontend: ['^libs/ui/web/', '^apps/seranote-web/.*\\.tsx$', '\\.stories\\.tsx$'],
+  backend: ['^libs/backend/'],
+  database: ['^drizzle/', 'libs/backend/db/.*schemas/', '/relations/', 'drizzle\\.config\\.ts$'],
+  i18n: ['apps/seranote-web/src/i18n/', '(^|/)en\\.json$'],
+  security: ['^libs/backend/actions/', { re: 'auth', flags: 'i' }, '\\.env'],
+};
+
+function compileAreaPaths(map) {
+  return Object.entries(map || {}).map(([area, patterns]) => [
+    area,
+    (patterns || []).map((p) => (typeof p === 'string' ? new RegExp(p) : new RegExp(p.re, p.flags || ''))),
+  ]);
 }
 
-function selectAreas(changedFiles, declaredAreas) {
-  const set = pathAreas(changedFiles);
+// deterministic path → area mapping, unioned with agent-declared areas
+function selectAreas(compiledAreaPaths, changedFiles, declaredAreas) {
+  const set = new Set();
+  for (const f of changedFiles || [])
+    for (const [area, regexes] of compiledAreaPaths) if (regexes.some((r) => r.test(f))) set.add(area);
   for (const a of declaredAreas || []) if (KNOWN_AREAS.includes(a)) set.add(a);
   return [...set];
 }
 
-// ── schemas ─────────────────────────────────────────────────────────────────
 const IMPL_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -164,6 +186,9 @@ const PLAYWRIGHT_SCHEMA = {
   },
   required: ['area', 'criteria', 'blockingFindings', 'notes'],
 };
+// <<< shared:reviewer-registry
+
+const AREA_COMPILED = compileAreaPaths(CFG.areaPaths || DEFAULT_AREA_PATHS);
 
 // ── prompt builders ──────────────────────────────────────────────────────────
 const CONTRACT = `Slice: ${SLICE}
@@ -224,11 +249,12 @@ function playwrightPrompt() {
 
 ${CONTRACT}
 
-First READ \`.claude/skills/dev-loop/browser-guide.md\` in the repo for login steps, seeded users, routes, the core SOAP flow, selectors, and the microphone fake-media flags. Then:
-1. Start the app in the background and capture its URL: \`DEV_LOGIN_ENABLED_SERVER=true pnpm nx portless seranote-web\` (wait until it serves).
-2. Author a throwaway Playwright spec (reuse the \`apps/seranote-web-e2e/\` config + the \`login.spec.ts\` dev-login pattern) driving ISOLATED HEADLESS Chromium with \`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream\`, \`video: 'on'\`, baseURL = the running app.
+First READ \`${BROWSER_GUIDE}\` in the repo for login steps, seeded users, routes, the core SOAP flow, selectors, and the microphone fake-media flags. Then:
+1. Start the app in the background and capture its URL: \`${DEV_SERVER}\` (wait until it serves).
+2. Author a throwaway Playwright spec (reuse the \`${E2E_DIR}\` config + the \`login.spec.ts\` dev-login pattern) driving ISOLATED HEADLESS Chromium with \`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream\`, \`video: 'on'\`, baseURL = the running app.
 3. Dev-login as the seeded user matching the slice, then exercise EACH acceptance-criterion user story, capturing a screenshot per criterion.
-4. Return: criteria (criterion + pass + screenshot path), blockingFindings (one per broken user story — a failed criterion is BLOCKING, include the screenshot), proofPaths (screenshots + video), notes (e.g. console errors). "Couldn't verify" counts as a failed criterion, not a pass. Set "area" to "playwright".`;
+4. CLEAN UP before returning: delete the throwaway spec file you authored (and any other source files you created under apps/, libs/, or the repo root). It relies on hand-seeded DB rows and is NOT a maintainable test — it must NOT be committed or left untracked, or the pre-push lint hook (nx affected -t lint) fails on it. Keep ONLY the screenshots/video under the gitignored test-output dir for proofPaths. Then run \`git status --porcelain\` and confirm it lists ONLY the implementer's committed change set — no untracked *.spec.ts or other new source files. Remove any of your artifacts that remain.
+5. Return: criteria (criterion + pass + screenshot path), blockingFindings (one per broken user story — a failed criterion is BLOCKING, include the screenshot), proofPaths (screenshots + video), notes (e.g. console errors). "Couldn't verify" counts as a failed criterion, not a pass. Set "area" to "playwright".`;
 }
 
 function fmtFeedback(blocking) {
@@ -243,7 +269,7 @@ function fmtFeedback(blocking) {
 // ── run ───────────────────────────────────────────────────────────────────────
 phase('Implement');
 log(`Implementing slice ${SLICE} (base ${BASE})`);
-let impl = await agent(implPrompt(0), { label: `impl:${SLICE}`, phase: 'Implement', model: 'claude-sonnet-5', effort: 'medium', schema: IMPL_SCHEMA });
+let impl = await agent(implPrompt(0), { label: `impl:${SLICE}`, phase: 'Implement', model: 'opus', schema: IMPL_SCHEMA });
 
 if (!impl) {
   return { sliceId: SLICE, converged: false, reviewRounds: 0, playwrightRounds: 0, error: 'implementation agent failed', outstanding: [], notes: [] };
@@ -263,7 +289,7 @@ let reviewConverged = false;
 let reviewRound = 0;
 
 for (reviewRound = 1; reviewRound <= MAX_ROUNDS; reviewRound++) {
-  const areas = selectAreas(changedFiles, declaredAreas);
+  const areas = selectAreas(AREA_COMPILED, changedFiles, declaredAreas);
   const ran = ['baseline', ...areas];
   reviewersPerRound.push({ round: reviewRound, reviewers: ran });
   log(`Review round ${reviewRound}: reviewers = ${ran.join(', ')}`);
@@ -273,8 +299,7 @@ for (reviewRound = 1; reviewRound <= MAX_ROUNDS; reviewRound++) {
       agent(reviewerPrompt('baseline', BASELINE), {
         label: `review:baseline`,
         phase: 'Review',
-        model: 'claude-sonnet-5',
-        effort: 'high',
+        model: 'sonnet',
         schema: FINDINGS_SCHEMA,
       }),
   ];
@@ -283,8 +308,7 @@ for (reviewRound = 1; reviewRound <= MAX_ROUNDS; reviewRound++) {
       agent(reviewerPrompt(area, REVIEWERS[area]), {
         label: `review:${area}`,
         phase: 'Review',
-        model: 'claude-sonnet-5',
-        effort: 'high',
+        model: 'sonnet',
         schema: FINDINGS_SCHEMA,
       }),
     );
@@ -316,8 +340,7 @@ for (reviewRound = 1; reviewRound <= MAX_ROUNDS; reviewRound++) {
   const fix = await agent(implPrompt(reviewRound, fmtFeedback(blocking)), {
     label: `fix:r${reviewRound}`,
     phase: 'Fix',
-    model: 'claude-sonnet-5',
-    effort: 'medium',
+    model: 'opus',
     schema: IMPL_SCHEMA,
   });
   if (!fix) {
@@ -348,8 +371,7 @@ if (reviewConverged && userFacing) {
     const pw = await agent(playwrightPrompt(), {
       label: `playwright:r${playwrightRound}`,
       phase: 'Playwright',
-      model: 'claude-opus-4-8',
-      effort: 'high',
+      model: 'opus',
       schema: PLAYWRIGHT_SCHEMA,
     });
 
@@ -379,8 +401,7 @@ if (reviewConverged && userFacing) {
     const fix = await agent(implPrompt(playwrightRound, fmtFeedback(blocking)), {
       label: `pw-fix:r${playwrightRound}`,
       phase: 'Fix',
-      model: 'claude-opus-4-8',
-      effort: 'high',
+      model: 'opus',
       schema: IMPL_SCHEMA,
     });
     if (!fix) {
@@ -411,7 +432,7 @@ return {
   playwrightRounds: playwrightRan ? (playwrightRound > PW_MAX_ROUNDS ? PW_MAX_ROUNDS : playwrightRound) : 0,
   reviewersPerRound,
   outstanding, // blocking findings still unresolved if either cap was hit
-  notes: carriedNotes, // judgement-call points for the human
+  notes: [...new Set(carriedNotes)], // judgement-call points for the human, deduped
   diffStat,
   playwrightProof,
 };

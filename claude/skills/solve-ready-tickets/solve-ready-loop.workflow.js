@@ -4,14 +4,14 @@ export const meta = {
     'Solve one agent:ready ticket, depth-scaled by a triage step: triage → implement (Opus) → review (scaled) → at most one fix round. Lighter than work-slice-loop (no slice/stack framing, cap 1, no human gate). Returns a summary for the draft PR.',
   phases: [
     { title: 'Triage', detail: 'one Sonnet agent sizes the ticket → trivial | standard | escalate', model: 'sonnet' },
-    { title: 'Implement', detail: 'Opus 4.8 agent; TDD for standard, lighter for trivial', model: 'opus' },
+    { title: 'Implement', detail: 'Opus agent; TDD for standard, lighter for trivial', model: 'opus' },
     { title: 'Review', detail: 'trivial: baseline only · standard: diff-matched reviewers (+ Playwright if user-facing)', model: 'sonnet' },
-    { title: 'Fix', detail: 'Opus 4.8 resolves blocking findings — at most ONE round', model: 'opus' },
+    { title: 'Fix', detail: 'Opus resolves blocking findings — at most ONE round', model: 'opus' },
   ],
 };
 
 // ── args (passed by the skill) ──────────────────────────────────────────────
-// { issueId, title, acceptanceCriteria, baseBranch, worktree }
+// { issueId, title, acceptanceCriteria, baseBranch, worktree, repoConfig }
 // The Workflow runtime delivers `args` as a JSON *string*, not a parsed object —
 // normalise it here so A.issueId etc. resolve (otherwise every run escalates as
 // "(unknown issue)").
@@ -24,16 +24,26 @@ if (typeof A === 'string') {
   }
 }
 A = A || {};
+const CFG = A.repoConfig || {}; // from ~/.claude/docs/agents/repo-config.md
 const ISSUE = A.issueId || '(unknown issue)';
 const TITLE = A.title ? String(A.title) : '';
-const BASE = A.baseBranch || 'development';
+const BASE = A.baseBranch || CFG.integrationBranch || 'development';
 const WORKTREE = A.worktree ? String(A.worktree) : '';
 const AC = Array.isArray(A.acceptanceCriteria)
   ? A.acceptanceCriteria.map((c) => `- ${c}`).join('\n')
   : String(A.acceptanceCriteria || '(see ticket — derive from description)');
+const DEV_SERVER = CFG.devServerCommand || 'DEV_LOGIN_ENABLED_SERVER=true pnpm nx portless seranote-web';
+const E2E_DIR = CFG.e2eDir || 'apps/seranote-web-e2e/';
+const BROWSER_GUIDE = CFG.browserGuidePath || '.claude/skills/dev-loop/browser-guide.md';
 
-// ── reviewer registry: area → anchor skill(s) + review focus ────────────────
-// (shared shape with work-slice-loop; kept local so this loop owns its depth)
+// >>> shared:reviewer-registry — generated from claude/skills/_shared/reviewer-registry.js; edit there and run `make skills-shared`
+// Shared reviewer registry for the feature-dev workflow scripts
+// (work-slice-loop, solve-ready-loop). Workflow scripts must be
+// self-contained — they cannot import this file — so `make skills-shared`
+// copies this block verbatim into each script between the
+// `// >>> shared:reviewer-registry` / `// <<< shared:reviewer-registry`
+// markers. Edit HERE, never in the generated blocks; `make skills-shared`
+// re-syncs, `./scripts/95_skills_shared.sh --check` fails on drift.
 const KNOWN_AREAS = ['frontend', 'backend', 'database', 'i18n', 'security', 'performance'];
 
 const REVIEWERS = {
@@ -75,57 +85,32 @@ const BASELINE = {
     'correctness bugs, missed acceptance criteria, convention/reuse misses, and test quality — NOT style nits.',
 };
 
-// ── deterministic path → area mapping (unioned with agent-declared areas) ───
-function pathAreas(files) {
-  const set = new Set();
-  for (const f of files || []) {
-    if (/^libs\/ui\/web\//.test(f) || /^apps\/seranote-web\/.*\.tsx$/.test(f) || /\.stories\.tsx$/.test(f))
-      set.add('frontend');
-    if (/^libs\/backend\//.test(f)) set.add('backend');
-    if (
-      /^drizzle\//.test(f) ||
-      /libs\/backend\/db\/.*schemas\//.test(f) ||
-      /\/relations\//.test(f) ||
-      /drizzle\.config\.ts$/.test(f)
-    )
-      set.add('database');
-    if (/apps\/seranote-web\/src\/i18n\//.test(f) || /(^|\/)en\.json$/.test(f)) set.add('i18n');
-    if (/^libs\/backend\/actions\//.test(f) || /auth/i.test(f) || /\.env/.test(f)) set.add('security');
-  }
-  return set;
+// area → path patterns (regex sources; object form `{re, flags}` carries flags).
+// The repo-specific default below is overridable per repo via
+// `repoConfig.areaPaths` from ~/.claude/docs/agents/repo-config.md.
+const DEFAULT_AREA_PATHS = {
+  frontend: ['^libs/ui/web/', '^apps/seranote-web/.*\\.tsx$', '\\.stories\\.tsx$'],
+  backend: ['^libs/backend/'],
+  database: ['^drizzle/', 'libs/backend/db/.*schemas/', '/relations/', 'drizzle\\.config\\.ts$'],
+  i18n: ['apps/seranote-web/src/i18n/', '(^|/)en\\.json$'],
+  security: ['^libs/backend/actions/', { re: 'auth', flags: 'i' }, '\\.env'],
+};
+
+function compileAreaPaths(map) {
+  return Object.entries(map || {}).map(([area, patterns]) => [
+    area,
+    (patterns || []).map((p) => (typeof p === 'string' ? new RegExp(p) : new RegExp(p.re, p.flags || ''))),
+  ]);
 }
 
-function selectAreas(changedFiles, declaredAreas) {
-  const set = pathAreas(changedFiles);
+// deterministic path → area mapping, unioned with agent-declared areas
+function selectAreas(compiledAreaPaths, changedFiles, declaredAreas) {
+  const set = new Set();
+  for (const f of changedFiles || [])
+    for (const [area, regexes] of compiledAreaPaths) if (regexes.some((r) => r.test(f))) set.add(area);
   for (const a of declaredAreas || []) if (KNOWN_AREAS.includes(a)) set.add(a);
   return [...set];
 }
-
-// ── schemas ─────────────────────────────────────────────────────────────────
-const TRIAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    tier: {
-      type: 'string',
-      enum: ['trivial', 'standard', 'escalate'],
-      description:
-        'trivial = copy/constant/dep-bump/lint/single-file mechanical, no real logic. standard = small bounded feature/bugfix with real logic in one or few areas. escalate = bigger / multi-area / ambiguous / migration- or auth-touching than an agent:ready ticket should be — kick back to a human.',
-    },
-    reason: { type: 'string', description: 'One or two sentences justifying the tier.' },
-    whereToLook: { type: 'string', description: 'Discovered code-layer pointers — files/dirs/sibling to mirror.' },
-    touchedAreas: {
-      type: 'array',
-      items: { type: 'string', enum: KNOWN_AREAS },
-      description: 'Best guess at the semantic areas this will touch.',
-    },
-    userFacing: {
-      type: 'boolean',
-      description: 'Will this plausibly change user-visible behaviour? Bias true when unsure.',
-    },
-  },
-  required: ['tier', 'reason', 'touchedAreas', 'userFacing'],
-};
 
 const IMPL_SCHEMA = {
   type: 'object',
@@ -197,6 +182,35 @@ const PLAYWRIGHT_SCHEMA = {
     notes: { type: 'array', items: { type: 'string' } },
   },
   required: ['area', 'criteria', 'blockingFindings', 'notes'],
+};
+// <<< shared:reviewer-registry
+
+const AREA_COMPILED = compileAreaPaths(CFG.areaPaths || DEFAULT_AREA_PATHS);
+
+// ── schemas (loop-specific; shared ones live in the registry block) ──────────
+const TRIAGE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    tier: {
+      type: 'string',
+      enum: ['trivial', 'standard', 'escalate'],
+      description:
+        'trivial = copy/constant/dep-bump/lint/single-file mechanical, no real logic. standard = small bounded feature/bugfix with real logic in one or few areas. escalate = bigger / multi-area / ambiguous / migration- or auth-touching than an agent:ready ticket should be — kick back to a human.',
+    },
+    reason: { type: 'string', description: 'One or two sentences justifying the tier.' },
+    whereToLook: { type: 'string', description: 'Discovered code-layer pointers — files/dirs/sibling to mirror.' },
+    touchedAreas: {
+      type: 'array',
+      items: { type: 'string', enum: KNOWN_AREAS },
+      description: 'Best guess at the semantic areas this will touch.',
+    },
+    userFacing: {
+      type: 'boolean',
+      description: 'Will this plausibly change user-visible behaviour? Bias true when unsure.',
+    },
+  },
+  required: ['tier', 'reason', 'touchedAreas', 'userFacing'],
 };
 
 // ── prompt builders ──────────────────────────────────────────────────────────
@@ -278,9 +292,9 @@ function playwrightPrompt() {
 
 ${CONTRACT}
 
-First READ \`.claude/skills/dev-loop/browser-guide.md\` in the repo for login steps, seeded users, routes, the core SOAP flow, selectors, and the microphone fake-media flags. Then:
-1. Start the app in the background and capture its URL: \`DEV_LOGIN_ENABLED_SERVER=true pnpm nx portless seranote-web\` (wait until it serves).
-2. Author a throwaway Playwright spec (reuse the \`apps/seranote-web-e2e/\` config + the \`login.spec.ts\` dev-login pattern) driving ISOLATED HEADLESS Chromium with \`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream\`, \`video: 'on'\`, baseURL = the running app.
+First READ \`${BROWSER_GUIDE}\` in the repo for login steps, seeded users, routes, the core SOAP flow, selectors, and the microphone fake-media flags. Then:
+1. Start the app in the background and capture its URL: \`${DEV_SERVER}\` (wait until it serves).
+2. Author a throwaway Playwright spec (reuse the \`${E2E_DIR}\` config + the \`login.spec.ts\` dev-login pattern) driving ISOLATED HEADLESS Chromium with \`--use-fake-ui-for-media-stream --use-fake-device-for-media-stream\`, \`video: 'on'\`, baseURL = the running app.
 3. Dev-login as the seeded user matching the ticket, then exercise EACH acceptance-criterion user story, capturing a screenshot per criterion.
 4. CLEAN UP before returning: delete the throwaway spec file you authored (and any other source files you created under apps/, libs/, or the repo root). It relies on hand-seeded DB rows and is NOT a maintainable test — it must NOT be committed or left untracked, or the pre-push lint hook (nx affected -t lint) fails on it. Keep ONLY the screenshots/video under the gitignored test-output dir for proofPaths. Then run \`git -C <worktree> status --porcelain\` and confirm it lists ONLY the implementer's committed change set — no untracked *.spec.ts or other new source files. Remove any of your artifacts that remain.
 5. Return: criteria (criterion + pass + screenshot path), blockingFindings (one per broken user story — a failed criterion is BLOCKING, include the screenshot), proofPaths (screenshots + video), notes (e.g. console errors). "Couldn't verify" counts as a failed criterion, not a pass. Set "area" to "playwright".`;
@@ -331,7 +345,7 @@ const playwrightProof = [];
 // trivial → baseline reviewer only, no Playwright.
 // standard → baseline + diff-matched area reviewers (+ Playwright if user-facing).
 phase('Review');
-const areas = TIER === 'trivial' ? [] : selectAreas(changedFiles, declaredAreas);
+const areas = TIER === 'trivial' ? [] : selectAreas(AREA_COMPILED, changedFiles, declaredAreas);
 const runPlaywright = TIER === 'standard' && userFacing;
 const reviewersRun = ['baseline', ...areas, ...(runPlaywright ? ['playwright'] : [])];
 log(`${ISSUE}: reviewers = ${reviewersRun.join(', ')}`);
@@ -420,6 +434,6 @@ return {
   reviewersRun,
   blockingFound: blocking.length,
   fixedCount,
-  notes: carriedNotes, // judgement-call / agent-flagged points for the PR comment
+  notes: [...new Set(carriedNotes)], // judgement-call / agent-flagged points for the PR comment, deduped
   playwrightProof,
 };

@@ -10,7 +10,7 @@ SHELL := /bin/bash
 
 .DEFAULT_GOAL := help
 
-.PHONY: all help doctor link packages apt mise starship zsh ssh-github tmux nvim fonts flatpak mise-launchd macos-animations macos-animations-revert skills-update
+.PHONY: all help doctor link packages apt mise starship zsh ssh-github tmux nvim fonts flatpak mise-launchd macos-animations macos-animations-revert skills-update skills-shared
 
 REPO_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 UNAME_S  := $(shell uname -s)
@@ -36,6 +36,7 @@ help:
 	@echo "  make tmux        - install TPM + tmux plugins"
 	@echo "  make nvim        - headless nvim plugin install/update"
 	@echo "  make skills-update - update vendored agent skills in-place (.agents/) to latest upstream"
+	@echo "  make skills-shared - sync the shared reviewer-registry block into the workflow scripts (claude/skills/)"
 	@echo "  make mise-launchd - install LaunchAgent so GUI apps see mise shims in PATH (macOS only; no-op elsewhere)"
 	@echo "  make macos-animations - disable macOS UI animations (Reduce Motion, Dock, Finder; macOS only)"
 	@echo "  make macos-animations-revert - restore macOS animation defaults"
@@ -96,6 +97,11 @@ skills-update:
 	npx --yes skills update -g -y
 	@echo "==> Updated. Review & commit changes under .agents/:"
 	@git -C "$(REPO_DIR)" status --short .agents
+
+# Copy the shared reviewer-registry block from claude/skills/_shared/ into each
+# workflow script (they must be self-contained). --check mode fails on drift.
+skills-shared:
+	./scripts/95_skills_shared.sh
 
 # ---------- Checks ----------
 doctor:

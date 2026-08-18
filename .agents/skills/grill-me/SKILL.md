@@ -8,3 +8,5 @@ Interview me relentlessly about every aspect of this plan until we reach a share
 Ask the questions one at a time.
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
+
+Sibling: `grill-with-docs` is the heavier variant — same interview, but it also challenges the plan against the project's domain glossary (CONTEXT.md) and records decisions in ADRs as they crystallise. Prefer it when the project keeps those docs.

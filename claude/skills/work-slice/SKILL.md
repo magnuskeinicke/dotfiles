@@ -7,7 +7,7 @@ description: Pick up the slice:next sub-issue from a PRD, implement it test-firs
 
 Drive **one** slice from a PRD to a stacked **draft PR**. The slices were produced by `/to-issues` as sub-issues of a parent PRD ticket, ordered into a stack. This skill picks the next one up, implements it test-first inside a bounded **targeted review ⇄ fix loop**, and then **opens a stacked draft PR automatically** — no confirmation gate; the draft PR itself is the later review surface. Run it once per slice; the next run stacks on the last.
 
-Read `~/.claude/docs/agents/issue-tracker.md` (how to fetch issues, read blocked-by relations, mark state) and `~/.claude/docs/agents/triage-labels.md` (the `slice:next` work pointer vs `agent:ready`). If missing, run `/setup-matt-pocock-skills`.
+Read `~/.claude/docs/agents/issue-tracker.md` (how to fetch issues, read blocked-by relations, mark state), `~/.claude/docs/agents/triage-labels.md` (the `slice:next` work pointer vs `agent:ready`), and `~/.claude/docs/agents/repo-config.md` (the repo-specific values — integration branch, dev-server command, e2e dir, browser guide, area→path map — passed to the workflow as `repoConfig`). If the first two are missing, run `/setup-matt-pocock-skills`; if `repo-config.md` is missing, the workflow falls back to its built-in Seranote defaults.
 
 ## Step 1 — Select the slice
 
@@ -80,22 +80,27 @@ Workflow({
     whereToLook,         // the slice's "Where to look" code-layer pointers
     figma,               // Figma node deep-links + recorded tokens (UI slices)
     baseBranch,          // resolved in Step 2 (predecessor stack branch `<project-slug>/NN-1-ser-xxxx`, or `development`)
-    prdContract          // the parent PRD's wider contract
+    prdContract,         // the parent PRD's wider contract
+    repoConfig           // the JSON block from ~/.claude/docs/agents/repo-config.md (integration branch,
+                         // dev-server command, e2e dir, browser-guide path, area→path map). Omit if the
+                         // file is missing — the workflow falls back to built-in defaults.
   }
 })
 ```
 
 The script body encodes everything below (registry, model pinning, the loop, the schemas) — the sections that follow document its behaviour. To tune the workflow, edit `work-slice-loop.workflow.js` and re-run with the same `scriptPath`.
 
-### Model pinning (not orchestrator discretion)
+### Model roles (aliases, never exact pins)
 
-- **Implement + code-review fix round** → `agent(..., { model: 'claude-sonnet-5', effort: 'medium' })` (Sonnet 5, medium effort).
-- **Baseline + area reviewers** → `agent(..., { model: 'claude-sonnet-5', effort: 'high' })` (Sonnet 5, high effort).
-- **Playwright reviewer + Playwright fix round** → `agent(..., { model: 'claude-opus-4-8', effort: 'high' })` (Opus 4.8, high effort).
+Models are role-based and use aliases (`opus` / `sonnet`) so they track the latest model tier — never pin exact model ids or effort levels:
+
+- **Implementers write, so they get the strongest model:** implement + every fix round (code-review and Playwright) → `opus`.
+- **Reviewers report, so they run leaner:** baseline + area reviewers → `sonnet`.
+- **Playwright reviewer** → currently `opus` (open question — may move to `sonnet` later).
 
 ### Reviewer registry — area → anchor skill → trigger paths
 
-The workflow selects reviewers by matching the changed files against the trigger column. **Baseline always runs.** Area reviewers run only when their paths are touched. Playwright is a per-slice judgement call (below).
+The workflow selects reviewers by matching the changed files against the trigger column. **Baseline always runs.** Area reviewers run only when their paths are touched. Playwright is a per-slice judgement call (below). The trigger paths below are the built-in defaults — `repoConfig.areaPaths` from `~/.claude/docs/agents/repo-config.md` overrides them per repo, and the registry itself lives once in `claude/skills/_shared/reviewer-registry.js` (synced into the workflow scripts via `make skills-shared`).
 
 | Reviewer | Anchor skill(s) | Fires when the diff touches |
 |---|---|---|
@@ -113,26 +118,27 @@ A reviewer is told to apply its anchor skill's rules against the slice's diff an
 
 Playwright is **not** part of the per-round code review — it runs as its own loop **after** that loop converges, and only when the change warrants it. Whether to run it is the orchestrator's judgement per slice — **lean toward running it.** Skip only when the slice clearly has no user-facing impact (pure refactor, internal util, a migration with no behaviour change). A backend-only diff can still change user-facing behaviour — when in doubt, run it. (The workflow gates this on the implement/fix agent's `userFacingImpact` flag, which biases to `true`.)
 
-It mirrors the repo's existing browser-verification mechanism — **read `.claude/skills/dev-loop/browser-guide.md` first** for login steps, seeded users, routes, the core SOAP flow, selectors, and the microphone fake-media flags. Each round it must:
+It mirrors the repo's existing browser-verification mechanism — **read `.claude/skills/dev-loop/browser-guide.md` first** for login steps, seeded users, routes, the core SOAP flow, selectors, and the microphone fake-media flags. (The guide path, dev-server command, and e2e dir below are the built-in defaults; `repo-config.md` overrides them.) Each round it must:
 
 1. Start the app in the background and capture its URL: `DEV_LOGIN_ENABLED_SERVER=true pnpm nx portless seranote-web` (wait until it serves).
 2. Author a throwaway Playwright spec (reuse `apps/seranote-web-e2e/` config + the `login.spec.ts` dev-login pattern) driving **isolated headless Chromium** with `--use-fake-ui-for-media-stream --use-fake-device-for-media-stream`, `video: 'on'`, `baseURL` = the running app.
 3. Dev-login as the seeded user matching the slice, then **exercise this slice's acceptance-criteria user stories**, capturing a screenshot per criterion.
-4. Return a PASS/FAIL per criterion with the proving screenshot. **A broken user story = a failed acceptance criterion = a blocking finding** that triggers a fix round; keep the screenshot as proof.
+4. **Clean up before returning:** delete the throwaway spec (and any other source file it created) so nothing untracked remains — an untracked spec fails the pre-push `nx affected -t lint` hook at PR time. Only the gitignored screenshots/video stay.
+5. Return a PASS/FAIL per criterion with the proving screenshot. **A broken user story = a failed acceptance criterion = a blocking finding** that triggers a fix round; keep the screenshot as proof.
 
 ### The loop (inside the workflow)
 
-1. **Implement** — one Sonnet 5 (medium effort) agent, TDD discipline (one tracer-bullet test → impl per acceptance criterion — vertical, never all-tests-then-all-impl). Use the "Where to look" pointers as the starting map; mirror the named sibling. For UI: fetch the Figma screenshot fresh via the Figma MCP from the slice's node deep-link and reuse design-system tokens/components, not magic numbers. Stay inside this slice's scope — if you discover it needs something a later slice owns, note it, don't pull future work forward. Commit. → GREEN slice.
+1. **Implement** — one Opus agent, TDD discipline (one tracer-bullet test → impl per acceptance criterion — vertical, never all-tests-then-all-impl). Use the "Where to look" pointers as the starting map; mirror the named sibling. For UI: fetch the Figma screenshot fresh via the Figma MCP from the slice's node deep-link and reuse design-system tokens/components, not magic numbers. Stay inside this slice's scope — if you discover it needs something a later slice owns, note it, don't pull future work forward. Commit. → GREEN slice.
 2. **Code-review loop, max 5 rounds**, starting from the GREEN slice — **baseline + area reviewers only, no Playwright**:
    1. **Detect changed areas** — `git diff --name-only <base>...HEAD`, match each path against the registry trigger column → the active reviewer set (baseline always).
-   2. **Review** — spawn the selected reviewers **in parallel** (each Sonnet 5, high effort, fresh), each returning a structured summary `{ area, blockingFindings[], notes[] }`.
+   2. **Review** — spawn the selected reviewers **in parallel** (each Sonnet, fresh), each returning a structured summary `{ area, blockingFindings[], notes[] }`.
    3. **Aggregate (deterministic).** No `blockingFindings` across any reviewer → the review loop **converges**; go to the Playwright loop. Otherwise → fix.
-   4. **Fix** — hand all blocking findings to a single fresh Sonnet 5 (medium effort) agent to resolve test-first (RED→GREEN where behaviour changes). Commit. Then **recompute the changed-area set from the fix diff** — the next round re-runs only the **fix-touched areas + baseline**. Return to step 1 with fresh reviewers.
+   4. **Fix** — hand all blocking findings to a single fresh Opus agent to resolve test-first (RED→GREEN where behaviour changes). Commit. Then **recompute the changed-area set from the fix diff** — the next round re-runs only the **fix-touched areas + baseline**. Return to step 1 with fresh reviewers.
    - **Cap at 5 rounds.** If round 5 still returns blocking findings, **stop** and return them as outstanding (skip the Playwright loop) — do not keep iterating. The main session still opens the draft PR (Step 4→5) and carries these outstanding findings into it. Pure judgement-call / debatable findings never block; carry them back as notes.
 3. **Playwright user-story loop, max 3 rounds** — runs **only after the code-review loop converged AND the slice is user-facing** (the case-by-case judgement above; skip pure refactors / internal utils / no-behaviour-change migrations):
-   1. **Verify** — one fresh Opus 4.8 (high effort) Playwright reviewer drives the running app and returns PASS/FAIL per acceptance-criterion user story with proving screenshots.
+   1. **Verify** — one fresh Opus Playwright reviewer drives the running app and returns PASS/FAIL per acceptance-criterion user story with proving screenshots. It cleans up its throwaway spec before returning (only gitignored screenshots/video remain).
    2. **Aggregate.** No broken user stories → the Playwright loop **converges**; done. Otherwise → fix.
-   3. **Fix** — hand the broken user stories (each a failed AC = blocking) to a single fresh Opus 4.8 (high effort) agent to resolve test-first. Commit. Re-verify with a fresh Playwright reviewer.
+   3. **Fix** — hand the broken user stories (each a failed AC = blocking) to a single fresh Opus agent to resolve test-first. Commit. Re-verify with a fresh Playwright reviewer.
    - **Cap at 3 rounds.** If round 3 still has broken user stories, **stop** and return them as outstanding — escalate to the human.
 4. Before returning, run the slice's tests + lint/typecheck green (`pnpm nx`).
 
@@ -159,6 +165,8 @@ Stacking is **owned by `av`**, but av does **not** open the PR — `create-pr` d
 - **`av sync`** then **adopts** that PR into the stack: it retargets the base to the parent branch and embeds the stack-linkage metadata block — no hand-rolled `gh pr edit --base`, no `### Stack` block.
 
 The mechanism that makes this work (verified): **`av sync` adopts an existing GitHub PR; `av pr` does NOT — `av pr` would open a second, duplicate PR.** So the branch is adopted in Step 2, `create-pr` opens the PR, and `av sync` reconciles it. **Never run `av pr` in this flow.**
+
+**0. Scrub worktree artifacts first.** The Playwright reviewer cleans up after itself, but guard anyway: an untracked throwaway e2e spec (e.g. `apps/seranote-web-e2e/e2e/*.spec.ts`) left in the worktree makes the pre-push `nx affected -t lint` hook lint it and fail the push. Run `git status --porcelain` — for each `??` line, remove it (the implementer committed its work via `av commit`, so anything still untracked is review scaffolding, never the shipped change). Then confirm the tree is clean. Do **not** touch tracked/committed files.
 
 **1. Clean up the stale remote branch.** Conductor pushed the pre-rename name. If it still exists on the remote, delete it so only the stack branch remains — and **close any PR that was opened against it**. This matters: `av sync` aborts the whole stack if a branch has more than one open PR (`error: multiple open pull requests for branch …`).
 
@@ -210,7 +218,7 @@ Then tell the user this slice is up for review and that the next `/work-slice <p
 - **`create-pr` is a repo skill — never edit it.** It opens the PR verbatim (title regex, conflict check, Summary, Linear test plan). Then **`av sync` adopts that PR** — retargets the base to the parent and embeds the stack metadata (Step 5). **Never run `av pr`** in this flow: `av pr` creates a *new* PR and duplicates create-pr's (verified); only `av sync` reconciles an existing GitHub PR into the stack. Don't run `gh pr edit --body` on an av-adopted PR — it strips the metadata block.
 - Never merge, approve, or mark the PR ready — Step 5 opens it as a **draft** (create-pr opens ready → `gh pr ready --undo`); promoting to ready is the human's call after review.
 - Never implement a needs-human/HITL slice unattended (Step 1).
-- **Model pinning is fixed:** implement + code-review fix are **Sonnet 5 medium**; baseline + area reviewers are **Sonnet 5 high**; the Playwright reviewer + Playwright fix are **Opus 4.8 high**. Not the orchestrator's discretion.
+- **Model roles are fixed, models are aliases:** implementers (implement + every fix round) are **Opus**; reviewers (baseline + area) are **Sonnet**; the Playwright reviewer is currently **Opus** (open question). Never pin exact model ids or effort levels. Not the orchestrator's discretion.
 - Reviewers are **read-only** — only the implement/fix agent edits code (Step 3).
 - Reviewers run **in parallel**; the workflow aggregates their structured summaries and decides fix vs done vs escalate deterministically.
 - **Re-review is focused:** after a code-review fix, only the fix-touched areas + the always-on baseline re-run. The baseline pass is the net against a fix regressing an area that's no longer reviewed. Playwright is no longer part of the per-round review — it's the dedicated post-convergence loop below.
