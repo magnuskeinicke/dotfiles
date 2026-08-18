@@ -98,9 +98,13 @@ if [ -n "$git_branch" ]; then
   out="${out} $(printf "${MAUVE} %s${RESET}" "$git_branch")"
 fi
 
+# Second line: model + context — kept off line 1 so a long workspace path
+# can't push them off-screen
+line2=""
+
 # Model
 if [ -n "$model" ]; then
-  out="${out} $(printf "${SUBTEXT1}|${RESET} ${PEACH}%s${RESET}" "$model")"
+  line2="$(printf "${PEACH}%s${RESET}" "$model")"
 fi
 
 # Context usage — show "used% (usedTokens/totalTokens) remaining%"
@@ -121,7 +125,14 @@ if [ -n "$used_pct" ]; then
     ctx_label="${ctx_label} ${rem_int}% left"
   fi
 
-  out="${out} $(printf "${SUBTEXT1}ctx:${ctx_color}%s${RESET}" "$ctx_label")"
+  if [ -n "$line2" ]; then
+    line2="${line2} $(printf "${SUBTEXT1}|${RESET}") "
+  fi
+  line2="${line2}$(printf "${ctx_color}%s${RESET}" "$ctx_label")"
+fi
+
+if [ -n "$line2" ]; then
+  out="${out}\n${line2}"
 fi
 
 printf "%b" "$out"

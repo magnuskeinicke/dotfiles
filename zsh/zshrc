@@ -193,6 +193,7 @@ export FIGMA_PAT="$(_secret figma-mcp)"
 export POSTHOG_PAT="$(_secret posthog-pat)"
 export CROWDIN_MCP_PAT="$(_secret crowdin-mcp)"
 export LINEAR_MCP_PAT="$(_secret linear-mcp)"
+export GITHUB_PACKAGE_TOKEN="$(_secret github-package-token)"
 
 
 # Start tmux if not inside tmux
@@ -204,3 +205,11 @@ fpath+=${ZDOTDIR:-~}/.zsh_functions
 
 eval "$(starship init zsh)"
 eval "$(mise activate zsh --shims)"
+
+# pnpm
+export PNPM_HOME="/Users/keinicke/Library/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end

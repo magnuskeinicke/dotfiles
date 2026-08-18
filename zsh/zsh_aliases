@@ -31,8 +31,9 @@ alias snwsb='snw; npx nx storybook storybook-web'
 # lazygit
 alias gg="lazygit"
 
-# Nimbalyst
-alias nimbalyst="$HOME/Applications/squashfs-root/AppRun"
-
 # CV — cd to repo + load env (.env/.env.local) + repo-local aliases (cvdev, cvbuild, cvall, ...)
 alias cv='cd $HOME/Documents/Personal/CV; source ./scripts/dev.sh'
+
+# Dermloop repo
+alias derm='cd /Users/keinicke/Documents/Work/dermloop && source tools/environment/load-variables.sh'
+alias derm-cli='derm; npx nx proxy-service k8s --configuration="vtt-test-pg"'

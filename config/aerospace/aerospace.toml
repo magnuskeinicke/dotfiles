@@ -84,6 +84,18 @@ on-mode-changed = []
     if.app-id = 'com.stablyai.orca'         # orca
     run = 'move-node-to-workspace C'
 
+[[on-window-detected]]
+    if.app-id = 'com.hnc.Discord'           # discord
+    run = 'move-node-to-workspace S'
+
+[[on-window-detected]]
+    if.app-id = 'com.riotgames.RiotGames.RiotClient'  # riot client
+    run = 'move-node-to-workspace M'
+
+[[on-window-detected]]
+    if.app-id = 'com.riotgames.leagueoflegends'       # league of legends
+    run = 'move-node-to-workspace M'
+
 [mode.main.binding]
     alt-slash = 'layout tiles horizontal vertical'
     alt-comma = 'layout accordion horizontal vertical'
