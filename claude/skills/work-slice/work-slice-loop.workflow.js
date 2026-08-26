@@ -39,6 +39,11 @@ const PRD = A.prdContract ? String(A.prdContract) : '';
 const SLICE_KIND = A.sliceKind === 'skeleton' ? 'skeleton' : 'delta';
 // The slice's "Convention contract" section: exemplar per layer, must-use libs.
 const CONVENTION = A.conventionContract ? String(A.conventionContract) : '';
+// How implement/fix agents commit. Stacking is gh-stack: branches are plain git
+// locally and only linked into the stack at PR time, so plain git commits are
+// correct. Overridable via args for a repo whose stack tool wraps commit.
+const COMMIT_CMD = A.commitCmd ? String(A.commitCmd) : 'git add -A && git commit -m';
+const COMMIT_LINE = `STACKING: commit with \`${COMMIT_CMD} "<msg>"\`. NEVER \`git push\` and never open a PR — the main session owns push/PR/stack linkage after review.`;
 const LIB_MAP = CFG.libMap
   ? Object.entries(CFG.libMap)
       .map(([lib, purpose]) => `- ${lib}: ${purpose}`)
@@ -52,7 +57,7 @@ const BROWSER_GUIDE = CFG.browserGuidePath || '.claude/skills/dev-loop/browser-g
 
 // >>> shared:reviewer-registry — generated from claude/skills/_shared/reviewer-registry.js; edit there and run `make skills-shared`
 // Shared reviewer registry for the feature-dev workflow scripts
-// (work-slice-loop, solve-ready-loop, review-code). Workflow scripts must be
+// (work-slice-loop, review-code). Workflow scripts must be
 // self-contained — they cannot import this file — so `make skills-shared`
 // copies this block verbatim into each script between the
 // `// >>> shared:reviewer-registry` / `// <<< shared:reviewer-registry`
@@ -98,11 +103,11 @@ const REVIEWERS = {
 const BASELINE = {
   skills: 'CLAUDE.md conventions',
   focus:
-    'correctness bugs, missed acceptance criteria, convention/reuse misses, and test quality — NOT style nits.',
+    'correctness bugs, missed acceptance criteria, convention/reuse misses, and test quality — NOT style nits. Comment hygiene IS in scope (CLAUDE.md comment rules, not a style nit): flag comments that restate the code, narrate the change, or compensate for an unclear name — the fix is deleting the comment or renaming so the code self-documents; a comment that survives states a non-obvious why in one line. Dead code and leftovers are in scope too: commented-out code, unused exports/params/variables, stray console.log/debug artifacts, and code orphaned by the change itself.',
 };
 
 // The reuse/consolidation reviewer — always its OWN agent (never merged into a
-// lane), gated on the diff ADDING files (IMPL_SCHEMA.addedFiles), not on paths.
+// lane), gated on the diff adding OR modifying files, not on paths.
 // Verdict split: duplicate-of-existing-lib = BLOCKING (use the lib, delete the
 // copy); generalizable-new-code = a `consolidations` entry, never blocking —
 // the orchestrator files it as a follow-up ticket instead of letting the slice
@@ -110,8 +115,30 @@ const BASELINE = {
 const REUSE = {
   skills: 'CLAUDE.md conventions',
   focus:
-    "every ADDED function/component/hook/util/type in the diff: search libs/** and the design system for an existing equivalent BEFORE accepting it (use repoConfig.libMap as the search index when provided). An equivalent exists → BLOCKING finding: use it and delete the copy. New code that is genuinely generalizable → a `consolidations` entry naming the target lib — NOT a blocking finding. Also audit the implementer's provenance table: every added file must cite a real `mirroredFrom` exemplar (verify it exists and is actually mirrored) or an explicit `deviation` reason — a missing, false, or hand-wavy row is a BLOCKING finding.",
+    "every function/component/hook/util/type ADDED by the diff — in new files OR added to modified files: search libs/** and the design system for an existing equivalent BEFORE accepting it (use repoConfig.libMap as the search index when provided). An equivalent exists → BLOCKING finding: use it and delete the copy. New code that is genuinely generalizable → a `consolidations` entry naming the target lib — NOT a blocking finding. Also DRY within the change itself (added AND modified files): the same logic/markup/query shape repeated across the diff → BLOCKING when a small local helper/component would remove it, a `consolidations` entry when the extraction is big enough to be follow-up work. Only flag real duplication (same reason to change) — never force an abstraction over incidental similarity. Also YAGNI/speculative abstraction: options/params/config no call site passes, wrapper layers with a single caller, generality no current caller needs → BLOCKING when the fix is inlining/deleting the speculation; a note when debatable. Also audit the implementer's provenance table: every added file must cite a real `mirroredFrom` exemplar (verify it exists and is actually mirrored) or an explicit `deviation` reason — a missing, false, or hand-wavy row is a BLOCKING finding.",
 };
+
+// The CodeRabbit reviewer — wraps the CodeRabbit CLI (`coderabbit review
+// --agent`) as one extra reviewer agent. It runs ONCE per workflow run, in the
+// FIRST reviewer round only (rate-limited external service; one round of
+// external signal is enough) — fix rounds re-run only our own lanes. The
+// wrapper agent verifies CodeRabbit's findings against the actual code before
+// reporting, so hallucinated or stale findings don't enter the fix loop.
+function coderabbitPrompt(contractText, crCmd) {
+  return `You are the CodeRabbit reviewer for this change — a READ-ONLY wrapper around the CodeRabbit CLI. You MUST NOT edit any files — only report.
+
+${contractText}
+
+Run the CodeRabbit CLI review via Bash (long-running — use a generous timeout, up to 10 minutes):
+\`${crCmd}\`
+
+Then translate its output into the structured report:
+- VERIFY each CodeRabbit finding against the actual code (open the cited file/line) before reporting it — drop anything that does not hold up.
+- blockingFindings: verified correctness bugs, security vulnerabilities, data-loss/race/resource-leak risks, or broken error handling. Each with title, file, line, detail, and a concrete suggestedFix.
+- notes: style/naming/docs/nit-level suggestions worth a human glance — never blocking.
+- If the CLI is missing, unauthenticated, rate-limited, or errors out: return an empty blockingFindings array plus a single note "CodeRabbit CLI unavailable: <reason>". Do NOT fall back to reviewing the code yourself — the other reviewer lanes cover that.
+Set "area" to "coderabbit". Do not pad findings to look productive — empty arrays are the correct result for a clean run.`;
+}
 
 // Injected by the tests gate: reviewers never see red code. When an implement/
 // fix pass reports testsGreen=false, the loop spends the round on fixing this
@@ -344,7 +371,7 @@ const CONTRACT = `Slice: ${SLICE}
 Base branch: ${BASE}
 
 WORKING DIRECTORY: operate in the CURRENT working directory — the slice's branch is already checked out in this worktree. Do NOT create a worktree, switch branches, or cd elsewhere; run every file edit, git, and pnpm/nx command here and commit on the current branch.
-AVIATOR: this repo is av-managed and the branch is already adopted into the stack. Commit with \`av commit -A -m "<msg>"\` — NEVER raw \`git commit\` or \`git push\` (that skips restacking and breaks stack tracking). Do not run \`av pr\`/\`av sync\` — the main session opens the PR after review.
+${COMMIT_LINE}
 Acceptance criteria:
 ${AC}
 ${PRD ? `\nParent PRD contract:\n${PRD}` : ''}
@@ -373,7 +400,7 @@ Rules:
 - Consolidation scope: extracting shared code into a lib is in-scope ONLY when it stays within this slice's own new code plus at most ONE existing call site. Anything wider → record it in notes as a consolidation candidate; do not refactor other features in this slice.
 - Stay strictly inside THIS slice's scope. If you find it needs something a later slice owns, record it in notes — do not pull future work forward.${SLICE_KIND === 'delta' ? "\n- CONTRACT FREEZE: never alter the skeleton's published contract (schema, types, API shape). If this delta genuinely requires a contract change, STOP implementing that part and record it in notes as a contract-freeze violation for the human — the stack needs restructuring, not a quiet edit." : ''}
 - Run the slice's tests + lint/typecheck with \`pnpm nx\` before finishing and make them PASS. Set testsGreen=true ONLY if you ran them in THIS session and saw them pass — never assume or claim green without running. Report the exact commands + final summary lines in testEvidence.
-- Commit with \`av commit -A -m "<slice-id> …"\` (message starts with the slice id). Never raw \`git commit\`/\`git push\`.
+- Commit with \`${COMMIT_CMD} "<slice-id> …"\` (message starts with the slice id). Never \`git push\`.
 
 Return the structured result: summary, committed, changedFiles (run \`git diff --name-only ${BASE}...HEAD\`), addedFiles (\`git diff --name-only --diff-filter=A ${BASE}...HEAD\`), provenance (one row per added file: mirroredFrom = the exemplar you actually followed, or deviation = why none fits — never both blank), touchedAreas (declare security/performance explicitly when relevant), userFacingImpact (bias true), testsGreen, testEvidence (commands + summary lines), diffStat (\`git diff --stat ${BASE}...HEAD\`), notes.`;
   }
@@ -386,7 +413,7 @@ ${CONTRACT}
 Blocking findings to resolve:
 ${feedback}
 
-Rules: stay in slice scope; the convention contract's exemplars stay BINDING (declare any deviation in provenance, never silently); no new helper without a libs/** search; run tests + lint/typecheck with \`pnpm nx\` and make them PASS (testsGreen=true only if you ran them THIS session and saw them pass — report commands + summary lines in testEvidence); commit with \`av commit -A -m "<slice-id> …"\` (never raw \`git commit\`/\`git push\`).
+Rules: stay in slice scope; the convention contract's exemplars stay BINDING (declare any deviation in provenance, never silently); no new helper without a libs/** search; run tests + lint/typecheck with \`pnpm nx\` and make them PASS (testsGreen=true only if you ran them THIS session and saw them pass — report commands + summary lines in testEvidence); commit with \`${COMMIT_CMD} "<slice-id> …"\` (never \`git push\`).
 Return the structured result (same shape as before) — recompute changedFiles/addedFiles/provenance/touchedAreas/userFacingImpact/diffStat vs ${BASE} (whole slice, not just this fix).`;
 }
 
@@ -417,7 +444,8 @@ Report ONLY:
 Set "area" to "${area}". Do not invent problems to look productive — an empty blockingFindings array is the correct result for clean code.`;
 }
 
-function reusePrompt(addedFiles, provenance, history) {
+function reusePrompt(addedFiles, changedFiles, provenance, history) {
+  const modified = changedFiles.filter((f) => !addedFiles.includes(f));
   const provRows = (provenance || [])
     .map((p) => `- ${p.file} → ${p.mirroredFrom ? `mirrors ${p.mirroredFrom}` : `[deviation: ${p.deviation || 'MISSING'}]`}`)
     .join('\n');
@@ -425,17 +453,20 @@ function reusePrompt(addedFiles, provenance, history) {
 
 ${CONTRACT}
 
-Files ADDED by this slice (your scope — inspect them via \`git diff ${BASE}...HEAD\`):
-${addedFiles.map((f) => `- ${f}`).join('\n')}
+Files ADDED by this slice (inspect them via \`git diff ${BASE}...HEAD\`):
+${addedFiles.length ? addedFiles.map((f) => `- ${f}`).join('\n') : '(none)'}
+
+Files MODIFIED by this slice (in scope for intra-diff DRY + YAGNI):
+${modified.length ? modified.map((f) => `- ${f}`).join('\n') : '(none)'}
 
 Provenance the implementer attested (VERIFY it — open each cited exemplar and check the file actually mirrors it):
-${provRows || '(none attested — every added file below is missing a provenance row: that is a blocking finding per file)'}
+${provRows || (addedFiles.length ? '(none attested — every added file above is missing a provenance row: that is a blocking finding per file)' : '(no added files — nothing to audit)')}
 ${LIB_MAP ? `\nExisting libs (search index for equivalents):\n${LIB_MAP}` : ''}
 
 Focus on: ${REUSE.focus}${history || ''}
 
 Report ONLY:
-- blockingFindings: (a) an added function/component/hook/util/type that duplicates an existing lib/design-system equivalent — name the equivalent, the fix is "use it, delete the copy"; (b) a provenance row that is missing, cites a non-existent exemplar, or claims a mirror the code visibly doesn't follow. Each with title, file, line, detail, concrete suggestedFix.
+- blockingFindings: (a) an added function/component/hook/util/type that duplicates an existing lib/design-system equivalent — name the equivalent, the fix is "use it, delete the copy"; (b) the same logic repeated within the diff where a small local helper would remove it; (c) a provenance row that is missing, cites a non-existent exemplar, or claims a mirror the code visibly doesn't follow. Each with title, file, line, detail, concrete suggestedFix.
 - consolidations: genuinely generalizable NEW code that belongs in an existing lib as follow-up work — title, detail (what + which call sites would adopt it), targetLib. NEVER put these in blockingFindings; they become follow-up tickets, not slice scope.
 - notes: judgement-call points that should not block.
 Set "area" to "reuse". Do not invent problems to look productive — empty arrays are the correct result for clean code.`;
@@ -534,7 +565,7 @@ for (reviewRound = 1; reviewRound <= MAX_ROUNDS; reviewRound++) {
 
   const areas = selectAreas(AREA_COMPILED, changedFiles, declaredAreas);
   const laneEntries = groupAreasByLane(areas);
-  const runReuse = addedFiles.length > 0; // reuse reviewer gates on the slice ADDING files
+  const runReuse = changedFiles.length + addedFiles.length > 0; // reuse gates on the slice adding OR modifying files
   const ran = [
     'baseline',
     ...laneEntries.map(([lane, members]) => `${lane}[${members.join('+')}]`),
@@ -565,7 +596,7 @@ for (reviewRound = 1; reviewRound <= MAX_ROUNDS; reviewRound++) {
   }
   if (runReuse) {
     thunks.push(() =>
-      agent(reusePrompt(addedFiles, provenance, history), {
+      agent(reusePrompt(addedFiles, changedFiles, provenance, history), {
         label: 'review:reuse',
         phase: 'Review',
         model: 'sonnet',

@@ -1,5 +1,5 @@
 // Shared reviewer registry for the feature-dev workflow scripts
-// (work-slice-loop, solve-ready-loop, review-code). Workflow scripts must be
+// (work-slice-loop, review-code). Workflow scripts must be
 // self-contained — they cannot import this file — so `make skills-shared`
 // copies this block verbatim into each script between the
 // `// >>> shared:reviewer-registry` / `// <<< shared:reviewer-registry`
@@ -45,11 +45,11 @@ const REVIEWERS = {
 const BASELINE = {
   skills: 'CLAUDE.md conventions',
   focus:
-    'correctness bugs, missed acceptance criteria, convention/reuse misses, and test quality — NOT style nits.',
+    'correctness bugs, missed acceptance criteria, convention/reuse misses, and test quality — NOT style nits. Comment hygiene IS in scope (CLAUDE.md comment rules, not a style nit): flag comments that restate the code, narrate the change, or compensate for an unclear name — the fix is deleting the comment or renaming so the code self-documents; a comment that survives states a non-obvious why in one line. Dead code and leftovers are in scope too: commented-out code, unused exports/params/variables, stray console.log/debug artifacts, and code orphaned by the change itself.',
 };
 
 // The reuse/consolidation reviewer — always its OWN agent (never merged into a
-// lane), gated on the diff ADDING files (IMPL_SCHEMA.addedFiles), not on paths.
+// lane), gated on the diff adding OR modifying files, not on paths.
 // Verdict split: duplicate-of-existing-lib = BLOCKING (use the lib, delete the
 // copy); generalizable-new-code = a `consolidations` entry, never blocking —
 // the orchestrator files it as a follow-up ticket instead of letting the slice
@@ -57,8 +57,30 @@ const BASELINE = {
 const REUSE = {
   skills: 'CLAUDE.md conventions',
   focus:
-    "every ADDED function/component/hook/util/type in the diff: search libs/** and the design system for an existing equivalent BEFORE accepting it (use repoConfig.libMap as the search index when provided). An equivalent exists → BLOCKING finding: use it and delete the copy. New code that is genuinely generalizable → a `consolidations` entry naming the target lib — NOT a blocking finding. Also audit the implementer's provenance table: every added file must cite a real `mirroredFrom` exemplar (verify it exists and is actually mirrored) or an explicit `deviation` reason — a missing, false, or hand-wavy row is a BLOCKING finding.",
+    "every function/component/hook/util/type ADDED by the diff — in new files OR added to modified files: search libs/** and the design system for an existing equivalent BEFORE accepting it (use repoConfig.libMap as the search index when provided). An equivalent exists → BLOCKING finding: use it and delete the copy. New code that is genuinely generalizable → a `consolidations` entry naming the target lib — NOT a blocking finding. Also DRY within the change itself (added AND modified files): the same logic/markup/query shape repeated across the diff → BLOCKING when a small local helper/component would remove it, a `consolidations` entry when the extraction is big enough to be follow-up work. Only flag real duplication (same reason to change) — never force an abstraction over incidental similarity. Also YAGNI/speculative abstraction: options/params/config no call site passes, wrapper layers with a single caller, generality no current caller needs → BLOCKING when the fix is inlining/deleting the speculation; a note when debatable. Also audit the implementer's provenance table: every added file must cite a real `mirroredFrom` exemplar (verify it exists and is actually mirrored) or an explicit `deviation` reason — a missing, false, or hand-wavy row is a BLOCKING finding.",
 };
+
+// The CodeRabbit reviewer — wraps the CodeRabbit CLI (`coderabbit review
+// --agent`) as one extra reviewer agent. It runs ONCE per workflow run, in the
+// FIRST reviewer round only (rate-limited external service; one round of
+// external signal is enough) — fix rounds re-run only our own lanes. The
+// wrapper agent verifies CodeRabbit's findings against the actual code before
+// reporting, so hallucinated or stale findings don't enter the fix loop.
+function coderabbitPrompt(contractText, crCmd) {
+  return `You are the CodeRabbit reviewer for this change — a READ-ONLY wrapper around the CodeRabbit CLI. You MUST NOT edit any files — only report.
+
+${contractText}
+
+Run the CodeRabbit CLI review via Bash (long-running — use a generous timeout, up to 10 minutes):
+\`${crCmd}\`
+
+Then translate its output into the structured report:
+- VERIFY each CodeRabbit finding against the actual code (open the cited file/line) before reporting it — drop anything that does not hold up.
+- blockingFindings: verified correctness bugs, security vulnerabilities, data-loss/race/resource-leak risks, or broken error handling. Each with title, file, line, detail, and a concrete suggestedFix.
+- notes: style/naming/docs/nit-level suggestions worth a human glance — never blocking.
+- If the CLI is missing, unauthenticated, rate-limited, or errors out: return an empty blockingFindings array plus a single note "CodeRabbit CLI unavailable: <reason>". Do NOT fall back to reviewing the code yourself — the other reviewer lanes cover that.
+Set "area" to "coderabbit". Do not pad findings to look productive — empty arrays are the correct result for a clean run.`;
+}
 
 // Injected by the tests gate: reviewers never see red code. When an implement/
 // fix pass reports testsGreen=false, the loop spends the round on fixing this
